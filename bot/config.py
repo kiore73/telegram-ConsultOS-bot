@@ -9,11 +9,21 @@ class Settings(BaseSettings):
     BOT_TOKEN: SecretStr
 
     # Telegram User IDs of admins
-    ADMIN_IDS: List[int] = Field(default_factory=list, env='ADMIN_IDS', sa_alias='ADMIN_IDS', sa_type=str,
-                                  description='Comma-separated list of Telegram user IDs who are admins')
+    ADMIN_IDS: List[int] = Field(default_factory=list)
 
-    # YKassa Token
-    YUKASSA_TOKEN: SecretStr | None = None # Make it optional
+    # --- YooKassa Settings ---
+    # Token for native Telegram Payments API (legacy)
+    YUKASSA_PAYMENTS_TOKEN: SecretStr | None = None
+
+    # Settings for direct YooKassa API integration
+    YOOKASSA_ENABLED: bool = False
+    YOOKASSA_SHOP_ID: SecretStr | None = None
+    YOOKASSA_SECRET_KEY: SecretStr | None = None
+    YOOKASSA_RETURN_URL: str | None = None
+    YOOKASSA_DEFAULT_RECEIPT_EMAIL: str | None = None
+    YOOKASSA_VAT_CODE: int = 1  # 1 = "Без НДС"
+    YOOKASSA_PAYMENT_MODE: str = "full_prepayment"
+    YOOKASSA_PAYMENT_SUBJECT: str = "service"
 
     # Database settings
     POSTGRES_USER: str
