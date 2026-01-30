@@ -36,16 +36,39 @@ async def on_startup():
             await session.flush()
             q1 = Question(questionnaire_id=main_questionnaire.id, text="Какой у вас опыт в IT?", type="single")
             q2 = Question(questionnaire_id=main_questionnaire.id, text="Опишите ваш последний проект.", type="text")
-            q3 = Question(questionnaire_id=main_questionnaire.id, text="Какой язык программирования вы предпочитаете?", type="single")
-            q4 = Question(questionnaire_id=main_questionnaire.id, text="Спасибо за ваши ответы!", type="text")
-            session.add_all([q1, q2, q3, q4])
+            q3 = Question(questionnaire_id=main_questionnaire.id, text="Какие технологии вы использовали?", type="multi")
+            q4 = Question(questionnaire_id=main_questionnaire.id, text="Приложите скриншот вашей последней работы (необязательно)", type="photo")
+            q5 = Question(questionnaire_id=main_questionnaire.id, text="Спасибо за ваши ответы!", type="text") # Final message
+            
+            session.add_all([q1, q2, q3, q4, q5])
             await session.flush()
+
+            # Create Logic
+            # Branching from Q1
             logic1_1 = QuestionLogic(question_id=q1.id, answer_value="Нет опыта", next_question_id=q2.id)
             logic1_2 = QuestionLogic(question_id=q1.id, answer_value="Меньше года", next_question_id=q3.id)
             logic1_3 = QuestionLogic(question_id=q1.id, answer_value="Больше года", next_question_id=q3.id)
-            logic2 = QuestionLogic(question_id=q2.id, answer_value="любой", next_question_id=q4.id)
-            logic3 = QuestionLogic(question_id=q3.id, answer_value="любой", next_question_id=q4.id)
-            session.add_all([logic1_1, logic1_2, logic1_3, logic2, logic3])
+            
+            # Logic from Q2 (text) to final message
+            logic2 = QuestionLogic(question_id=q2.id, answer_value="любой", next_question_id=q5.id)
+
+            # Logic for Q3 (multi-choice)
+            logic3_1 = QuestionLogic(question_id=q3.id, answer_value="Python", next_question_id=None) # Options for multi-choice
+            logic3_2 = QuestionLogic(question_id=q3.id, answer_value="JavaScript", next_question_id=None)
+            logic3_3 = QuestionLogic(question_id=q3.id, answer_value="SQL", next_question_id=None)
+            logic3_4 = QuestionLogic(question_id=q3.id, answer_value="Docker", next_question_id=None)
+            logic3_any = QuestionLogic(question_id=q3.id, answer_value="любой", next_question_id=q4.id) # After pressing "Done"
+
+            # Logic for Q4 (photo)
+            logic4_any = QuestionLogic(question_id=q4.id, answer_value="любой", next_question_id=q5.id)
+
+            session.add_all([
+                logic1_1, logic1_2, logic1_3, 
+                logic2, 
+                logic3_1, logic3_2, logic3_3, logic3_4, logic3_any,
+                logic4_any
+            ])
+            
             await session.commit()
             logging.info("Questionnaire data seeded.")
 

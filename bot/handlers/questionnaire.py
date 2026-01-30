@@ -1,3 +1,5 @@
+import json
+import logging
 from aiogram import Router, F, types, Bot
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,160 +15,185 @@ router = Router()
 
 
 async def show_question(bot: Bot, chat_id: int, message_id: int, state: FSMContext, session: AsyncSession, question_id: int):
-    """
-    Helper function to display a question.
-    """
+    """ Helper function to display a question. """
     result = await session.execute(select(Question).where(Question.id == question_id))
     question = result.scalar_one_or_none()
 
-    if question:
-        # This is the final message, transition to booking
-        if "Спасибо" in question.text:
-            await state.set_state(BookingFSM.DATE_SELECT)
-            calendar_keyboard = await get_calendar_keyboard(session)
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text="Спасибо за ответы! Теперь выберите удобную дату для консультации:",
-                reply_markup=calendar_keyboard
-            )
-            return
+    if not question:
+        await bot.send_message(chat_id, "Опросник завершен или произошла ошибка.")
+        await state.clear()
+        return
 
-        keyboard = await get_question_keyboard(question, session)
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=f"Вопрос:\n\n{question.text}",
-            reply_markup=keyboard
-        )
-        await state.update_data(current_question_id=question.id)
-    else:
-        # This case means the questionnaire is finished, transition to booking
+    if "Спасибо" in question.text:
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
-        await bot.send_message(
-            chat_id, 
-            "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=message_id,
+            text="Спасибо за ответы! Теперь выберите удобную дату для консультации:",
             reply_markup=calendar_keyboard
         )
+        return
+    
+    current_data = await state.get_data()
+    selected_answers = current_data.get(f"multi_answers_{question_id}", [])
+    
+    keyboard = await get_question_keyboard(question, session, selected_answers)
+    await bot.edit_message_text(
+        chat_id=chat_id, message_id=message_id,
+        text=f"Вопрос:\n\n{question.text}",
+        reply_markup=keyboard
+    )
+    await state.update_data(current_question_id=question.id)
 
-@router.callback_query(F.data == "start_questionnaire")
-async def start_questionnaire_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    """
-    Handles the 'Start Questionnaire' button press.
-    """
-    await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
-    await state.update_data(question_history=[], answers={})
-    await show_question(callback_query.bot, callback_query.from_user.id, callback_query.message.message_id, state, session, question_id=1)
-    await callback_query.answer()
 
-
-async def process_answer(state: FSMContext, session: AsyncSession, user_id: int, question_id: int, answer_value: str):
-    """
-    Saves the answer and determines the next question.
-    """
-    # Save the answer
+async def process_answer(state: FSMContext, session: AsyncSession, question_id: int, answer_value):
+    """ Saves the answer and determines the next question. """
     current_data = await state.get_data()
     answers = current_data.get("answers", {})
-    answers[str(question_id)] = answer_value
     
-    # Update question history for the back button
+    if isinstance(answer_value, list):
+        answers[str(question_id)] = json.dumps(answer_value, ensure_ascii=False)
+        # For branching logic, we'll use a generic "любой" for multi-choice
+        logic_answer_value = "любой"
+    else:
+        answers[str(question_id)] = answer_value
+        logic_answer_value = answer_value
+
     question_history = current_data.get("question_history", [])
-    question_history.append(question_id)
+    if question_id not in question_history:
+        question_history.append(question_id)
     
     await state.update_data(answers=answers, question_history=question_history)
 
-    # Find next question logic
     result = await session.execute(
-        select(QuestionLogic).where(
-            QuestionLogic.question_id == question_id,
-            QuestionLogic.answer_value == answer_value
-        )
+        select(QuestionLogic).where(QuestionLogic.question_id == question_id, QuestionLogic.answer_value == logic_answer_value)
     )
     logic = result.scalar_one_or_none()
     
-    # If no specific logic, check for a generic "any" answer
     if not logic:
         result = await session.execute(
-            select(QuestionLogic).where(
-                QuestionLogic.question_id == question_id,
-                QuestionLogic.answer_value == "любой"
-            )
+            select(QuestionLogic).where(QuestionLogic.question_id == question_id, QuestionLogic.answer_value == "любой")
         )
         logic = result.scalar_one_or_none()
 
-    if logic:
-        return logic.next_question_id
-    return None
+    return logic.next_question_id if logic else None
+
+
+async def go_to_next_question(bot: Bot, chat_id: int, message_id: int, state: FSMContext, session: AsyncSession, next_question_id: int):
+    """ Transitions to the next question or ends the questionnaire. """
+    if next_question_id:
+        await show_question(bot, chat_id, message_id, state, session, next_question_id)
+    else:
+        await state.set_state(BookingFSM.DATE_SELECT)
+        calendar_keyboard = await get_calendar_keyboard(session)
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=message_id,
+            text="Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+            reply_markup=calendar_keyboard
+        )
+
+
+@router.callback_query(F.data == "start_questionnaire")
+async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
+    await state.update_data(question_history=[], answers={})
+    await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, question_id=1)
+    await cb.answer()
 
 
 @router.callback_query(F.data.startswith("answer:"))
-async def answer_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    """
-    Handles answers from inline keyboard buttons.
-    """
-    _, question_id_str, answer_value = callback_query.data.split(":", 2)
-    question_id = int(question_id_str)
-    
-    next_question_id = await process_answer(state, session, callback_query.from_user.id, question_id, answer_value)
+async def answer_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, q_id_str, answer_value = cb.data.split(":", 2)
+    next_question_id = await process_answer(state, session, int(q_id_str), answer_value)
+    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, next_question_id)
+    await cb.answer()
 
-    if next_question_id:
-        await show_question(callback_query.bot, callback_query.from_user.id, callback_query.message.message_id, state, session, next_question_id)
+
+@router.callback_query(F.data.startswith("multi_answer:"))
+async def multi_answer_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, q_id_str, answer_value = cb.data.split(":", 2)
+    question_id = int(q_id_str)
+    
+    current_data = await state.get_data()
+    selected_key = f"multi_answers_{question_id}"
+    selected_for_q = current_data.get(selected_key, [])
+    
+    if answer_value in selected_for_q:
+        selected_for_q.remove(answer_value)
     else:
-        # No more questions, transition to booking
-        await state.set_state(BookingFSM.DATE_SELECT)
-        calendar_keyboard = await get_calendar_keyboard(session)
-        await callback_query.message.edit_text(
-            "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
-            reply_markup=calendar_keyboard
-        )
+        selected_for_q.append(answer_value)
         
-    await callback_query.answer()
+    await state.update_data({selected_key: selected_for_q})
+    await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, question_id)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("multi_done:"))
+async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, q_id_str = cb.data.split(":", 1)
+    question_id = int(q_id_str)
+    
+    current_data = await state.get_data()
+    selected_answers = current_data.get(f"multi_answers_{question_id}", [])
+    
+    next_question_id = await process_answer(state, session, question_id, selected_answers)
+    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, next_question_id)
+    await cb.answer()
+
+
+@router.message(QuestionnaireFSM.IN_QUESTIONNAIRE, F.photo)
+async def photo_answer_handler(message: types.Message, state: FSMContext, session: AsyncSession):
+    current_data = await state.get_data()
+    question_id = current_data.get("current_question_id")
+    question = (await session.execute(select(Question).where(Question.id == question_id))).scalar_one_or_none()
+
+    if question and question.type == 'photo':
+        photo_file_id = message.photo[-1].file_id
+        next_question_id = await process_answer(state, session, question_id, photo_file_id)
+        # Need to edit the original message, not reply. This is tricky.
+        # For now, let's send a new message.
+        await message.answer("Фото получено. Следующий вопрос:")
+        sent_message = await message.answer(".")
+        await go_to_next_question(message.bot, message.from_user.id, sent_message.message_id, state, session, next_question_id)
+    else:
+        await message.answer("Пожалуйста, ответьте на текущий вопрос или отправьте фото, если это требуется.")
+
+
+@router.callback_query(F.data.startswith("skip_question:"))
+async def skip_question_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, q_id_str = cb.data.split(":", 1)
+    next_question_id = await process_answer(state, session, int(q_id_str), "skipped")
+    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, next_question_id)
+    await cb.answer()
 
 
 @router.message(QuestionnaireFSM.IN_QUESTIONNAIRE, F.text)
-async def text_answer_handler(message: Message, state: FSMContext, session: AsyncSession):
-    """
-    Handles text answers from the user.
-    """
+async def text_answer_handler(message: types.Message, state: FSMContext, session: AsyncSession):
     current_data = await state.get_data()
     question_id = current_data.get("current_question_id")
-
-    result = await session.execute(select(Question).where(Question.id == question_id))
-    question = result.scalar_one_or_none()
+    question = (await session.execute(select(Question).where(Question.id == question_id))).scalar_one_or_none()
 
     if question and question.type == 'text':
-        next_question_id = await process_answer(state, session, message.from_user.id, question_id, message.text)
-        
-        if next_question_id:
-            # HACK: a bit of a hack to get a message_id to edit.
-            # We need to find the bot's message to edit it. Let's just send a new one.
-            await message.answer("Ответ принят. Следующий вопрос:")
-            sent_message = await message.answer(".")
-            await show_question(message.bot, message.from_user.id, sent_message.message_id, state, session, next_question_id)
-        else:
-            # No more questions, transition to booking
-            await state.set_state(BookingFSM.DATE_SELECT)
-            calendar_keyboard = await get_calendar_keyboard(session)
-            await message.answer(
-                "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
-                reply_markup=calendar_keyboard
-            )
+        next_question_id = await process_answer(state, session, question_id, message.text)
+        await message.answer("Ответ принят. Следующий вопрос:")
+        sent_message = await message.answer(".")
+        await go_to_next_question(message.bot, message.from_user.id, sent_message.message_id, state, session, next_question_id)
+    else:
+        await message.answer("Пожалуйста, воспользуйтесь кнопками для ответа.")
+
 
 @router.callback_query(F.data == "back_to_previous_question")
-async def back_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    """
-    Handles the 'Back' button.
-    """
+async def back_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     current_data = await state.get_data()
     question_history = current_data.get("question_history", [])
-
     if not question_history:
-        await callback_query.answer("Вы в самом начале, назад нельзя.", show_alert=True)
+        await cb.answer("Вы в самом начале, назад нельзя.", show_alert=True)
         return
-
-    previous_question_id = question_history.pop()
-    await state.update_data(question_history=question_history)
+        
+    # Remove current question from history to get to the previous one
+    question_history.pop()
+    previous_question_id = question_history.pop() if question_history else 1 # Go to start if history is now empty
     
-    await show_question(callback_query.bot, callback_query.from_user.id, callback_query.message.message_id, state, session, previous_question_id)
-    await callback_query.answer()
+    await state.update_data(question_history=question_history)
+    await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, previous_question_id)
+    await cb.answer()
