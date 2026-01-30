@@ -40,7 +40,7 @@
     ```bash
     cp .env.example .env
     ```
-    Откройте файл `.env` и обязательно заполните `BOT_TOKEN`, `ADMIN_IDS` и настройки ЮKassa.
+    Откройте файл `.env` и обязательно заполните `BOT_TOKEN`, `ADMIN_IDS`, `SERVICE_PRICE` и настройки ЮKassa.
 
 ### 2. Режим для локальной разработки (Long Polling)
 
@@ -60,12 +60,40 @@
 
 ### 3. Режим для "боевого" сервера (Webhook)
 
-Этот режим рекомендуется для серверов, так как он более производительный.
+Этот режим рекомендуется для серверов, так как он более производительный и подходит для публичного размещения.
 
-**Предварительные требования:**
--   Публичный сервер (VPS/VDS) с доступом по SSH.
--   Доменное имя, направленное на IP-адрес вашего сервера.
--   Установленный Nginx и `certbot` для получения SSL-сертификата.
+**Предварительные требования (для Ubuntu 24.04):**
+
+*   **Docker и Docker Compose:**
+    ```bash
+    # Установка Docker
+    sudo apt update
+    sudo apt install ca-certificates curl gnupg
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    echo \
+      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update
+    sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # Добавление пользователя в группу docker (чтобы не использовать sudo с docker)
+    sudo usermod -aG docker $USER
+    # Перезагрузите сессию или выйдите/войдите, чтобы изменения вступили в силу
+    # newgrp docker
+    ```
+
+*   **Nginx:**
+    ```bash
+    sudo apt install nginx
+    ```
+
+*   **Certbot (для SSL-сертификатов):**
+    ```bash
+    sudo apt install certbot python3-certbot-nginx
+    ```
 
 **Пошаговая инструкция:**
 
@@ -79,7 +107,7 @@
 2.  **Настроить Nginx в качестве обратного прокси:**
     Nginx будет принимать HTTPS-трафик от Telegram и перенаправлять его на нашего бота, работающего в Docker.
 
-    -   Создайте файл конфигурации для вашего сайта:
+    -   Создайте файл конфигурации для вашего сайта (замените `your-domain.com` на ваш домен):
       ```bash
       sudo nano /etc/nginx/sites-available/your-domain.com
       ```
@@ -96,35 +124,47 @@
           listen 443 ssl http2;
           server_name your-domain.com;
 
-          # Пути к вашим SSL-сертификатам (полученным через Certbot)
-          ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-          ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+          # Пути к вашим SSL-сертификатам будут указаны Certbot
+          # ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+          # ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+          # Включаем Certbot для автоматической настройки SSL
           include /etc/letsencrypt/options-ssl-nginx.conf;
           ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
           location / {
               # Перенаправляем все запросы к нашему боту
-              proxy_pass http://127.0.0.1:8080;
+              proxy_pass http://127.00.1:8080;
               proxy_set_header Host $host;
               proxy_set_header X-Real-IP $remote_addr;
               proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           }
       }
       ```
-    -   Активируйте конфигурацию и перезапустите Nginx:
+    -   Сохраните файл и создайте символическую ссылку:
       ```bash
       sudo ln -s /etc/nginx/sites-available/your-domain.com /etc/nginx/sites-enabled/
-      sudo nginx -t # Проверка синтаксиса
-      sudo systemctl restart nginx
+      ```
+    -   Проверьте синтаксис Nginx и перезагрузите его:
+      ```bash
+      sudo nginx -t
+      sudo systemctl reload nginx
       ```
 
-3.  **Настроить Firewall:**
-    Убедитесь, что ваш файрвол разрешает трафик на порты 80 и 443:
+3.  **Получить SSL-сертификат с помощью Certbot:**
+    ```bash
+    sudo certbot --nginx -d your-domain.com
+    ```
+    Следуйте инструкциям Certbot. Он автоматически обновит конфигурацию Nginx с путями к сертификатам.
+
+4.  **Настроить Firewall (UFW):**
+    Убедитесь, что ваш файрвол разрешает трафик на порты 80 (HTTP) и 443 (HTTPS):
     ```bash
     sudo ufw allow 'Nginx Full'
+    sudo ufw enable # Если UFW не был включен
     ```
 
-4.  **Запустить проект:**
+5.  **Запустить проект:**
     Находясь в директории проекта на сервере, выполните:
     ```bash
     docker compose up -d

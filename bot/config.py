@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     YOOKASSA_PAYMENT_MODE: str = "full_prepayment"
     YOOKASSA_PAYMENT_SUBJECT: str = "service"
 
+    # --- Service Price ---
+    SERVICE_PRICE: float = 1000.00
+
     # --- Webhook Settings ---
     WEBHOOK_HOST: str | None = None # e.g. https://your-domain.com
     WEBHOOK_PATH: str = "/webhook/bot"

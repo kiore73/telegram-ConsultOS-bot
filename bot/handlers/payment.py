@@ -36,7 +36,7 @@ async def proceed_to_payment_handler(callback_query: types.CallbackQuery, state:
     )
 
     # Define payment details
-    amount = 1000.00
+    amount = settings.SERVICE_PRICE
     description = "Оплата консультации"
     metadata = {"user_id": user_id, "username": callback_query.from_user.username}
 
