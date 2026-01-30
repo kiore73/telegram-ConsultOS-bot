@@ -7,7 +7,7 @@ import json
 # Configure logging first
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types # Added types here
 from aiogram.enums import ParseMode
 from aiogram.client.bot import DefaultBotProperties
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
