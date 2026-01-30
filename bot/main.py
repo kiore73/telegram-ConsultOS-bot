@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
+from aiogram.client.bot import DefaultBotProperties # Import DefaultBotProperties
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from sqlalchemy import select
@@ -85,7 +86,7 @@ async def on_shutdown_webhook(bot: Bot):
 
 
 async def main() -> None:
-    bot = Bot(settings.BOT_TOKEN.get_secret_value(), parse_mode=ParseMode.HTML)
+    bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
 
     # Register middlewares and routers
