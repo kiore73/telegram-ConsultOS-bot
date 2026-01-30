@@ -3,8 +3,11 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import datetime
+import json # For formatting answers
 
 from ..states.booking import BookingFSM
+from ..states.questionnaire import QuestionnaireFSM # Import QuestionnaireFSM to get answers
+from ..config import settings
 from ..database.models import TimeSlot, Booking, User
 from ..keyboards.booking import get_time_keyboard, get_calendar_keyboard
 
@@ -55,11 +58,33 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
         session.add(new_booking)
         await session.commit()
 
-        await state.clear()
+        # Get questionnaire answers
+        fsm_data = await state.get_data()
+        questionnaire_answers = fsm_data.get("answers", {})
+        formatted_answers = "\n".join([f"- {k}: {v}" for k, v in questionnaire_answers.items()])
+
+        await state.clear() # Clear state after successful booking
         await callback_query.message.edit_text(
             f"Отлично! Вы успешно записаны на {slot.date.strftime('%d %B %Y')} в {slot.time.strftime('%H:%M')}.\n\n"
             "В ближайшее время с вами свяжется администратор."
         )
+
+        # Send notification to admins
+        admin_notification_text = (
+            f"📅 <b>Новая запись!</b>\n\n"
+            f"Пользователь: {callback_query.from_user.full_name} (@{callback_query.from_user.username})\n"
+            f"ID: <code>{callback_query.from_user.id}</code>\n"
+            f"На дату: {slot.date.strftime('%Y-%m-%d')}\n"
+            f"На время: {slot.time.strftime('%H:%M')}\n"
+            f"Ответы на опросник:\n{formatted_answers}"
+        )
+        for admin_id in settings.ADMIN_IDS:
+            try:
+                await callback_query.bot.send_message(admin_id, admin_notification_text)
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to send booking notification to admin {admin_id}: {e}")
+
     else:
         await callback_query.message.edit_text("К сожалению, этот слот уже занят. Пожалуйста, выберите другой.")
         # Reshow the calendar

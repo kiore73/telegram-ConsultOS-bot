@@ -89,6 +89,22 @@ async def successful_payment_handler(message: Message, state: FSMContext, sessio
             f"Теперь вы можете перейти к опроснику.",
             reply_markup=keyboard
         )
+
+        # Send notification to admins
+        admin_notification_text = (
+            f"💰 <b>Новая успешная оплата!</b>\n\n"
+            f"Пользователь: {message.from_user.full_name} (@{message.from_user.username})\n"
+            f"ID: <code>{message.from_user.id}</code>\n"
+            f"Сумма: {payment_info.total_amount // 100} {payment_info.currency}\n"
+            f"Telegram Charge ID: <code>{payment_info.telegram_payment_charge_id}</code>\n"
+            f"Provider Charge ID: <code>{payment_info.provider_payment_charge_id}</code>"
+        )
+        for admin_id in settings.ADMIN_IDS:
+            try:
+                await message.bot.send_message(admin_id, admin_notification_text)
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to send payment notification to admin {admin_id}: {e}")
     else:
         # This case should ideally not be reached if the start handler works correctly
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте начать сначала с /start.")
