@@ -47,13 +47,13 @@ async def admin_add_slot_start(callback_query: types.CallbackQuery, state: FSMCo
     await callback_query.answer()
 
 
-@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot_prev_month:"))
-@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot_next_month:"))
+@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot:prev_month:"))
+@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot:next_month:"))
 async def admin_calendar_navigation_handler(callback_query: types.CallbackQuery, state: FSMContext):
     """
     Handles navigation between months in the admin calendar.
     """
-    _, action, date_str = callback_query.data.split(":")
+    _, action, date_str = callback_query.data.split(":", 2) # Correctly unpack 3 parts
     current_date = datetime.date.fromisoformat(date_str)
 
     if action == "prev_month":
@@ -70,12 +70,12 @@ async def admin_calendar_navigation_handler(callback_query: types.CallbackQuery,
     await callback_query.answer()
 
 
-@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot_select_day:"))
+@router.callback_query(AdminFSM.ADD_SLOT_DATE, F.data.startswith("admin_add_slot:select_day:"))
 async def admin_select_slot_date_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     """
     Handles the selection of a date for a new slot and shows time options.
     """
-    _, _, date_str = callback_query.data.split(":")
+    _, _, date_str = callback_query.data.split(":", 2) # Correctly unpack 3 parts
     selected_date = datetime.date.fromisoformat(date_str)
 
     await state.update_data(new_slot_date=selected_date.isoformat())

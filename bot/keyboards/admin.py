@@ -43,9 +43,9 @@ async def get_admin_calendar_keyboard(current_date: datetime.date, prefix: str) 
     
     # Header with current month and year
     keyboard.append([
-        InlineKeyboardButton(text="<", callback_data=f"{prefix}_prev_month:{current_date.isoformat()}"),
-        InlineKeyboardButton(text=current_date.strftime("%B %Y"), callback_data=f"{prefix}_current_month:{current_date.isoformat()}"),
-        InlineKeyboardButton(text=">", callback_data=f"{prefix}_next_month:{current_date.isoformat()}"),
+        InlineKeyboardButton(text="<", callback_data=f"{prefix}:prev_month:{current_date.isoformat()}"),
+        InlineKeyboardButton(text=current_date.strftime("%B %Y"), callback_data=f"{prefix}:current_month:{current_date.isoformat()}"),
+        InlineKeyboardButton(text=">", callback_data=f"{prefix}:next_month:{current_date.isoformat()}"),
     ])
 
     # Weekday headers
@@ -70,7 +70,7 @@ async def get_admin_calendar_keyboard(current_date: datetime.date, prefix: str) 
             keyboard.append(row)
             row = []
         
-        callback_data = f"{prefix}_select_day:{date_obj.isoformat()}"
+        callback_data = f"{prefix}:select_day:{date_obj.isoformat()}"
         row.append(InlineKeyboardButton(text=str(day), callback_data=callback_data))
     
     if row: # Add last row if not empty
