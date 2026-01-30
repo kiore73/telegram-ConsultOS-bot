@@ -1,36 +1,35 @@
 import asyncio
 import logging
 import sys
+import datetime
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
-
-import datetime
-from .database.models import Base, Questionnaire, Question, QuestionLogic, TimeSlot
-from .handlers import start, payment, questionnaire, booking, admin
-from .middlewares.db import DbSessionMiddleware
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 from sqlalchemy import select
 
+from .config import settings
+from .database.models import Base, Questionnaire, Question, QuestionLogic, TimeSlot
+from .database.session import async_engine, async_session_maker
+from .handlers import start, payment, questionnaire, booking, admin
+from .middlewares.db import DbSessionMiddleware
 
-async def on_startup():
-    """
-    Function to be executed on startup.
-    It creates all database tables and seeds initial data if necessary.
-    """
-    logging.info("Bot starting...")
+
+async def init_db():
+    """ Initializes the database and seeds initial data if necessary. """
+    logging.info("Initializing database...")
     async with async_engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-    # Seed initial data
     async with async_session_maker() as session:
-        # Seed Questionnaire
-        result = await session.execute(select(Questionnaire))
-        if result.scalar_one_or_none() is None:
+        # Seed Questionnaire if empty
+        if (await session.execute(select(Questionnaire))).scalar_one_or_none() is None:
             logging.info("Seeding questionnaire data...")
+            # ... (seeding logic remains the same)
             main_questionnaire = Questionnaire(title="Основной опросник")
             session.add(main_questionnaire)
             await session.flush()
@@ -39,78 +38,83 @@ async def on_startup():
             q3 = Question(questionnaire_id=main_questionnaire.id, text="Какие технологии вы использовали?", type="multi")
             q4 = Question(questionnaire_id=main_questionnaire.id, text="Приложите скриншот вашей последней работы (необязательно)", type="photo")
             q5 = Question(questionnaire_id=main_questionnaire.id, text="Спасибо за ваши ответы!", type="text") # Final message
-            
             session.add_all([q1, q2, q3, q4, q5])
             await session.flush()
-
-            # Create Logic
-            # Branching from Q1
             logic1_1 = QuestionLogic(question_id=q1.id, answer_value="Нет опыта", next_question_id=q2.id)
             logic1_2 = QuestionLogic(question_id=q1.id, answer_value="Меньше года", next_question_id=q3.id)
             logic1_3 = QuestionLogic(question_id=q1.id, answer_value="Больше года", next_question_id=q3.id)
-            
-            # Logic from Q2 (text) to final message
             logic2 = QuestionLogic(question_id=q2.id, answer_value="любой", next_question_id=q5.id)
-
-            # Logic for Q3 (multi-choice)
-            logic3_1 = QuestionLogic(question_id=q3.id, answer_value="Python", next_question_id=None) # Options for multi-choice
+            logic3_1 = QuestionLogic(question_id=q3.id, answer_value="Python", next_question_id=None)
             logic3_2 = QuestionLogic(question_id=q3.id, answer_value="JavaScript", next_question_id=None)
             logic3_3 = QuestionLogic(question_id=q3.id, answer_value="SQL", next_question_id=None)
             logic3_4 = QuestionLogic(question_id=q3.id, answer_value="Docker", next_question_id=None)
-            logic3_any = QuestionLogic(question_id=q3.id, answer_value="любой", next_question_id=q4.id) # After pressing "Done"
-
-            # Logic for Q4 (photo)
+            logic3_any = QuestionLogic(question_id=q3.id, answer_value="любой", next_question_id=q4.id)
             logic4_any = QuestionLogic(question_id=q4.id, answer_value="любой", next_question_id=q5.id)
-
-            session.add_all([
-                logic1_1, logic1_2, logic1_3, 
-                logic2, 
-                logic3_1, logic3_2, logic3_3, logic3_4, logic3_any,
-                logic4_any
-            ])
-            
+            session.add_all([logic1_1, logic1_2, logic1_3, logic2, logic3_1, logic3_2, logic3_3, logic3_4, logic3_any, logic4_any])
             await session.commit()
             logging.info("Questionnaire data seeded.")
 
-        # Seed TimeSlots
-        result = await session.execute(select(TimeSlot))
-        if result.scalar_one_or_none() is None:
+        # Seed TimeSlots if empty
+        if (await session.execute(select(TimeSlot))).scalar_one_or_none() is None:
             logging.info("Seeding time slot data...")
             today = datetime.date.today()
             slots = []
-            for day in range(7):  # Seed for the next 7 days
+            for day in range(7):
                 current_date = today + datetime.timedelta(days=day)
-                for hour in range(10, 18, 2): # Slots from 10:00 to 16:00, every 2 hours
+                for hour in range(10, 18, 2):
                     slots.append(TimeSlot(date=current_date, time=datetime.time(hour, 0), is_available=True))
             session.add_all(slots)
             await session.commit()
             logging.info("Time slot data seeded.")
+    logging.info("Database initialization complete.")
 
-    logging.info("Database tables checked and seeded if necessary.")
+
+async def on_startup_webhook(bot: Bot):
+    """ Function to be executed on startup with webhook. """
+    await init_db()
+    webhook_url = f"{settings.WEBHOOK_HOST}{settings.WEBHOOK_PATH}"
+    await bot.set_webhook(webhook_url)
+    logging.info(f"Webhook set to {webhook_url}")
+
+
+async def on_shutdown_webhook(bot: Bot):
+    """ Function to be executed on shutdown with webhook. """
+    logging.info("Shutting down and deleting webhook...")
+    await bot.delete_webhook()
+    logging.info("Webhook deleted.")
 
 
 async def main() -> None:
-    # Initialize Bot instance with a default parse mode which will be passed to all API calls
     bot = Bot(settings.BOT_TOKEN.get_secret_value(), parse_mode=ParseMode.HTML)
-    
-    # Create a dispatcher
     dp = Dispatcher()
 
-    # Register middleware
+    # Register middlewares and routers
     dp.update.middleware(DbSessionMiddleware(session_pool=async_session_maker))
-
-    # Register startup function
-    dp.startup.register(on_startup)
-
-    # Register routers
     dp.include_router(start.router)
     dp.include_router(payment.router)
     dp.include_router(questionnaire.router)
     dp.include_router(booking.router)
     dp.include_router(admin.router)
 
-    # Start polling
-    await dp.start_polling(bot)
+    if settings.WEBHOOK_HOST:
+        # --- Webhook Mode ---
+        logging.info("Starting bot in webhook mode...")
+        dp.startup.register(on_startup_webhook)
+        dp.shutdown.register(on_shutdown_webhook)
+        
+        app = web.Application()
+        webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        webhook_requests_handler.register(app, path=settings.WEBHOOK_PATH)
+        setup_application(app, dp, bot=bot)
+        
+        web.run_app(app, host=settings.WEB_SERVER_HOST, port=settings.WEB_SERVER_PORT)
+
+    else:
+        # --- Polling Mode ---
+        logging.info("Starting bot in polling mode...")
+        dp.startup.register(init_db)
+        await bot.delete_webhook(drop_pending_updates=True) # Ensure no webhook is set
+        await dp.start_polling(bot)
 
 
 if __name__ == "__main__":

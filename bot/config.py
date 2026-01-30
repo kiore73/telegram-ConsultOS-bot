@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     YOOKASSA_PAYMENT_MODE: str = "full_prepayment"
     YOOKASSA_PAYMENT_SUBJECT: str = "service"
 
+    # --- Webhook Settings ---
+    WEBHOOK_HOST: str | None = None # e.g. https://your-domain.com
+    WEBHOOK_PATH: str = "/webhook/bot"
+    WEB_SERVER_HOST: str = "0.0.0.0"
+    WEB_SERVER_PORT: int = 8080
+
     # Database settings
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
