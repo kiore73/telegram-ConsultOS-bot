@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
-from aiogram.client.bot import DefaultBotProperties # Import DefaultBotProperties
+from aiogram.client.bot import DefaultBotProperties
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from sqlalchemy import select
@@ -27,10 +27,9 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_maker() as session:
-        # Seed Questionnaire if empty
+        # Seed data logic...
         if (await session.execute(select(Questionnaire))).scalar_one_or_none() is None:
             logging.info("Seeding questionnaire data...")
-            # ... (seeding logic remains the same)
             main_questionnaire = Questionnaire(title="Основной опросник")
             session.add(main_questionnaire)
             await session.flush()
@@ -38,7 +37,7 @@ async def init_db():
             q2 = Question(questionnaire_id=main_questionnaire.id, text="Опишите ваш последний проект.", type="text")
             q3 = Question(questionnaire_id=main_questionnaire.id, text="Какие технологии вы использовали?", type="multi")
             q4 = Question(questionnaire_id=main_questionnaire.id, text="Приложите скриншот вашей последней работы (необязательно)", type="photo")
-            q5 = Question(questionnaire_id=main_questionnaire.id, text="Спасибо за ваши ответы!", type="text") # Final message
+            q5 = Question(questionnaire_id=main_questionnaire.id, text="Спасибо за ваши ответы!", type="text")
             session.add_all([q1, q2, q3, q4, q5])
             await session.flush()
             logic1_1 = QuestionLogic(question_id=q1.id, answer_value="Нет опыта", next_question_id=q2.id)
@@ -55,7 +54,6 @@ async def init_db():
             await session.commit()
             logging.info("Questionnaire data seeded.")
 
-        # Seed TimeSlots if empty
         if (await session.execute(select(TimeSlot))).scalar_one_or_none() is None:
             logging.info("Seeding time slot data...")
             today = datetime.date.today()
@@ -71,7 +69,6 @@ async def init_db():
 
 
 async def on_startup_webhook(bot: Bot):
-    """ Function to be executed on startup with webhook. """
     await init_db()
     webhook_url = f"{settings.WEBHOOK_HOST}{settings.WEBHOOK_PATH}"
     await bot.set_webhook(webhook_url)
@@ -79,17 +76,22 @@ async def on_startup_webhook(bot: Bot):
 
 
 async def on_shutdown_webhook(bot: Bot):
-    """ Function to be executed on shutdown with webhook. """
     logging.info("Shutting down and deleting webhook...")
     await bot.delete_webhook()
     logging.info("Webhook deleted.")
 
 
-async def main() -> None:
+async def start_polling(dp: Dispatcher, bot: Bot):
+    logging.info("Starting bot in polling mode...")
+    dp.startup.register(init_db)
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+
+def main() -> None:
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
 
-    # Register middlewares and routers
     dp.update.middleware(DbSessionMiddleware(session_pool=async_session_maker))
     dp.include_router(start.router)
     dp.include_router(payment.router)
@@ -98,7 +100,6 @@ async def main() -> None:
     dp.include_router(admin.router)
 
     if settings.WEBHOOK_HOST:
-        # --- Webhook Mode ---
         logging.info("Starting bot in webhook mode...")
         dp.startup.register(on_startup_webhook)
         dp.shutdown.register(on_shutdown_webhook)
@@ -109,17 +110,12 @@ async def main() -> None:
         setup_application(app, dp, bot=bot)
         
         web.run_app(app, host=settings.WEB_SERVER_HOST, port=settings.WEB_SERVER_PORT)
-
     else:
-        # --- Polling Mode ---
-        logging.info("Starting bot in polling mode...")
-        dp.startup.register(init_db)
-        await bot.delete_webhook(drop_pending_updates=True) # Ensure no webhook is set
-        await dp.start_polling(bot)
+        asyncio.run(start_polling(dp, bot))
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except (KeyboardInterrupt, SystemExit):
         logging.info("Bot stopped.")
