@@ -13,11 +13,12 @@ class Settings(BaseSettings):
     ADMIN_IDS: str = ""
 
     # --- YooKassa Settings ---
-    YUKASSA_PAYMENTS_TOKEN: SecretStr | None = None
+
     YOOKASSA_ENABLED: bool = False
     YOOKASSA_SHOP_ID: SecretStr | None = None
     YOOKASSA_SECRET_KEY: SecretStr | None = None
-    YOOKASSA_RETURN_URL: str | None = None
+    YOOKASSA_RETURN_URL: str | None = None # For user redirection after payment
+    YOOKASSA_NOTIFICATION_URL: str | None = None # For server-to-server payment status notifications
     YOOKASSA_DEFAULT_RECEIPT_EMAIL: str | None = None
     YOOKASSA_VAT_CODE: int = 1
     YOOKASSA_PAYMENT_MODE: str = "full_prepayment"

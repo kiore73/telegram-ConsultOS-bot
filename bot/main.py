@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import datetime
+import json
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -12,9 +13,10 @@ from aiogram.client.bot import DefaultBotProperties
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from sqlalchemy import select
+from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotification
 
 from .config import settings
-from .database.models import Base, Questionnaire, Question, QuestionLogic, TimeSlot
+from .database.models import Base, Questionnaire, Question, QuestionLogic, TimeSlot, User, Payment
 from .database.session import async_engine, async_session_maker
 from .handlers import start, payment, questionnaire, booking, admin
 from .middlewares.db import DbSessionMiddleware
@@ -54,17 +56,6 @@ async def init_db():
             await session.commit()
             logging.info("Questionnaire data seeded.")
 
-        if (await session.execute(select(TimeSlot))).scalar_one_or_none() is None:
-            logging.info("Seeding time slot data...")
-            today = datetime.date.today()
-            slots = []
-            for day in range(7):
-                current_date = today + datetime.timedelta(days=day)
-                for hour in range(10, 18, 2):
-                    slots.append(TimeSlot(date=current_date, time=datetime.time(hour, 0), is_available=True))
-            session.add_all(slots)
-            await session.commit()
-            logging.info("Time slot data seeded.")
     logging.info("Database initialization complete.")
 
 
@@ -72,13 +63,19 @@ async def on_startup_webhook(bot: Bot):
     await init_db()
     webhook_url = f"{settings.WEBHOOK_HOST}{settings.WEBHOOK_PATH}"
     await bot.set_webhook(webhook_url)
-    logging.info(f"Webhook set to {webhook_url}")
+    logging.info(f"Telegram Webhook set to {webhook_url}")
+
+    if settings.YOOKASSA_NOTIFICATION_URL:
+        # We need to explicitly set the webhook URL for YooKassa
+        # However, this is done by setting Configuration.webhook_url in YooKassaService __init__
+        # So we just log it here.
+        logging.info(f"YooKassa Notifications expected at: {settings.YOOKASSA_NOTIFICATION_URL}")
 
 
 async def on_shutdown_webhook(bot: Bot):
-    logging.info("Shutting down and deleting webhook...")
+    logging.info("Shutting down and deleting Telegram webhook...")
     await bot.delete_webhook()
-    logging.info("Webhook deleted.")
+    logging.info("Telegram Webhook deleted.")
 
 
 async def start_polling(dp: Dispatcher, bot: Bot):
@@ -86,6 +83,63 @@ async def start_polling(dp: Dispatcher, bot: Bot):
     dp.startup.register(init_db)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
+
+
+async def yookassa_webhook_handler(request: web.Request) -> web.Response:
+    """
+    Handles incoming notifications from YooKassa.
+    """
+    try:
+        data = await request.text()
+        notification = WebhookNotificationFactory().create(json.loads(data))
+        
+        bot: Bot = request.app['bot']
+        session_pool = request.app['session_pool']
+
+        if notification.event == 'payment.succeeded':
+            payment_id_yk = notification.object.id
+            user_telegram_id = notification.object.metadata.get('user_id')
+
+            async with session_pool() as session:
+                user = (await session.execute(select(User).where(User.telegram_id == int(user_telegram_id)))).scalar_one_or_none()
+                payment = (await session.execute(select(Payment).where(Payment.provider_charge_id == payment_id_yk))).scalar_one_or_none()
+
+                if user and payment:
+                    if not user.has_paid: # Only update if not already paid
+                        user.has_paid = True
+                        payment.status = "success"
+                        await session.commit()
+
+                        # Notify user
+                        await bot.send_message(user.telegram_id, "Ваша оплата успешно подтверждена! Теперь вы можете перейти к опроснику.")
+                        
+                        # Notify admins
+                        admin_notification_text = (
+                            f"💰 \u003cb\u003eНОВОЕ УВЕДОМЛЕНИЕ ОТ ЮKASSA: Оплата подтверждена!\u003c/b\u003e\n\n"
+                            f"Пользователь: {user.username or 'N/A'} (ID: \u003ccode\u003e{user.telegram_id}\u003c/code\u003e)\n"
+                            f"Сумма: {notification.object.amount.value} {notification.object.amount.currency}\n"
+                            f"YooKassa Payment ID: \u003ccode\u003e{payment_id_yk}\u003c/code\u003e"
+                        )
+                        for admin_id in settings.admin_ids_list:
+                            try:
+                                await bot.send_message(admin_id, admin_notification_text)
+                            except Exception as e:
+                                logging.error(f"Failed to send YK notification to admin {admin_id}: {e}")
+                    else:
+                        logging.info(f"YooKassa notification received for already paid user {user_telegram_id}, payment {payment_id_yk}. Skipping.")
+                else:
+                    logging.error(f"YooKassa notification for payment {payment_id_yk}: User or Payment record not found in DB. User ID: {user_telegram_id}")
+            
+        elif notification.event == 'payment.canceled' or notification.event == 'payment.failed':
+            # Handle canceled/failed payments (e.g., update DB status, notify)
+            logging.warning(f"YooKassa payment {notification.object.id} {notification.event}.")
+            # TODO: Implement full handling for canceled/failed payments
+
+        return web.Response(status=200)
+
+    except Exception as e:
+        logging.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
+        return web.Response(status=500)
 
 
 def main() -> None:
@@ -105,8 +159,22 @@ def main() -> None:
         dp.shutdown.register(on_shutdown_webhook)
         
         app = web.Application()
+        app['bot'] = bot # Make bot accessible in webhook handler
+        app['session_pool'] = async_session_maker # Make session pool accessible
+        
+        # Register Telegram webhook handler
         webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         webhook_requests_handler.register(app, path=settings.WEBHOOK_PATH)
+
+        # Register YooKassa webhook handler
+        if settings.YOOKASSA_NOTIFICATION_URL:
+            # The path needs to be extracted from the full URL for aiohttp routing
+            from urllib.parse import urlparse
+            parsed_url = urlparse(settings.YOOKASSA_NOTIFICATION_URL)
+            yookassa_webhook_path = parsed_url.path
+            app.router.add_post(yookassa_webhook_path, yookassa_webhook_handler)
+            logging.info(f"YooKassa webhook handler registered at {yookassa_webhook_path}")
+        
         setup_application(app, dp, bot=bot)
         
         web.run_app(app, host=settings.WEB_SERVER_HOST, port=settings.WEB_SERVER_PORT)
