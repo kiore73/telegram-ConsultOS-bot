@@ -128,7 +128,7 @@ async def check_payment_handler(callback_query: types.CallbackQuery, state: FSMC
                 f"Сумма: {payment_info['amount_value']} {payment_info['amount_currency']}\n"
                 f"YooKassa Payment ID: <code>{yookassa_payment_id}</code>"
             )
-            for admin_id in settings.ADMIN_IDS:
+            for admin_id in settings.admin_ids_list:
                 try:
                     await callback_query.bot.send_message(admin_id, admin_notification_text)
                 except Exception as e:

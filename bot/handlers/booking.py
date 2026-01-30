@@ -78,7 +78,7 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
             f"На время: {slot.time.strftime('%H:%M')}\n"
             f"Ответы на опросник:\n{formatted_answers}"
         )
-        for admin_id in settings.ADMIN_IDS:
+        for admin_id in settings.admin_ids_list:
             try:
                 await callback_query.bot.send_message(admin_id, admin_notification_text)
             except Exception as e:
