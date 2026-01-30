@@ -79,10 +79,15 @@ async def successful_payment_handler(message: Message, state: FSMContext, sessio
         
         await state.set_state(PaymentFSM.PAYMENT_SUCCESS)
 
+        keyboard = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [types.InlineKeyboardButton(text="Перейти к опроснику", callback_data="start_questionnaire")]
+            ]
+        )
         await message.answer(
             f"Оплата на сумму {payment_info.total_amount // 100} {payment_info.currency} прошла успешно!\n"
-            f"Теперь вы можете перейти к опроснику."
-            # TODO: Add a button to start the questionnaire
+            f"Теперь вы можете перейти к опроснику.",
+            reply_markup=keyboard
         )
     else:
         # This case should ideally not be reached if the start handler works correctly
