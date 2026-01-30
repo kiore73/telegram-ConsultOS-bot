@@ -8,7 +8,7 @@ import json # For formatting answers
 from ..states.booking import BookingFSM
 from ..states.questionnaire import QuestionnaireFSM # Import QuestionnaireFSM to get answers
 from ..config import settings
-from ..database.models import TimeSlot, Booking, User
+from ..database.models import TimeSlot, Booking, User, Question # Added Question
 from ..keyboards.booking import get_time_keyboard, get_calendar_keyboard
 
 router = Router()
