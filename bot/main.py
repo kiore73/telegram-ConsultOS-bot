@@ -110,8 +110,17 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                         payment.status = "success"
                         await session.commit()
 
-                        # Notify user
-                        await bot.send_message(user.telegram_id, "Ваша оплата успешно подтверждена! Теперь вы можете перейти к опроснику.")
+                        # Notify user with a button to start the questionnaire
+                        keyboard = types.InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [types.InlineKeyboardButton(text="Перейти к опроснику", callback_data="start_questionnaire")]
+                            ]
+                        )
+                        await bot.send_message(
+                            user.telegram_id, 
+                            "Ваша оплата успешно подтверждена! Теперь вы можете перейти к опроснику.",
+                            reply_markup=keyboard
+                        )
                         
                         # Notify admins
                         admin_notification_text = (
