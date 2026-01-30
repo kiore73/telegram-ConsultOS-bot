@@ -61,7 +61,36 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
         # Get questionnaire answers
         fsm_data = await state.get_data()
         questionnaire_answers = fsm_data.get("answers", {})
-        formatted_answers = "\n".join([f"- {k}: {v}" for k, v in questionnaire_answers.items()])
+
+        # Fetch all questions to format answers correctly
+        all_questions = (await session.execute(select(Question))).scalars().all()
+        questions_map = {q.id: q for q in all_questions}
+
+        formatted_answers_list = []
+        photo_file_ids_to_send = []
+
+        for q_id_str, answer_value in questionnaire_answers.items():
+            q_id = int(q_id_str)
+            question = questions_map.get(q_id)
+            if not question:
+                continue
+
+            if question.type == "photo":
+                if answer_value and answer_value != "skipped":
+                    formatted_answers_list.append(f"- {question.text}: [Фото приложено ниже]")
+                    photo_file_ids_to_send.append(answer_value)
+                else:
+                    formatted_answers_list.append(f"- {question.text}: Пропущено")
+            elif question.type == "multi":
+                try:
+                    multi_answers = json.loads(answer_value)
+                    formatted_answers_list.append(f"- {question.text}: {', '.join(multi_answers)}")
+                except json.JSONDecodeError:
+                    formatted_answers_list.append(f"- {question.text}: {answer_value} (некорректный формат multi-ответа)")
+            else:
+                formatted_answers_list.append(f"- {question.text}: {answer_value}")
+        
+        formatted_answers = "\n".join(formatted_answers_list)
 
         await state.clear() # Clear state after successful booking
         await callback_query.message.edit_text(
@@ -81,6 +110,8 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
         for admin_id in settings.admin_ids_list:
             try:
                 await callback_query.bot.send_message(admin_id, admin_notification_text)
+                for photo_file_id in photo_file_ids_to_send:
+                    await callback_query.bot.send_photo(admin_id, photo=photo_file_id)
             except Exception as e:
                 import logging
                 logging.error(f"Failed to send booking notification to admin {admin_id}: {e}")
