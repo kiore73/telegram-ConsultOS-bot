@@ -66,7 +66,7 @@ class QuestionLogic(Base):
     id = Column(Integer, primary_key=True)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     answer_value = Column(String, nullable=False)
-    next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=True) # Allow null
 
 
 class Answer(Base):
