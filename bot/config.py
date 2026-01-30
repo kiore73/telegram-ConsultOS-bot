@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr
+from pydantic import SecretStr, Field
+from typing import List
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
@@ -7,8 +8,12 @@ class Settings(BaseSettings):
     # Telegram Bot Token
     BOT_TOKEN: SecretStr
 
+    # Telegram User IDs of admins
+    ADMIN_IDS: List[int] = Field(default_factory=list, env='ADMIN_IDS', sa_alias='ADMIN_IDS', sa_type=str,
+                                  description='Comma-separated list of Telegram user IDs who are admins')
+
     # YKassa Token
-    YUKASSA_TOKEN: SecretStr
+    YUKASSA_TOKEN: SecretStr | None = None # Make it optional
 
     # Database settings
     POSTGRES_USER: str

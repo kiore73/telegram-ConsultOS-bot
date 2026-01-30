@@ -2,12 +2,15 @@ import asyncio
 import logging
 import sys
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 
 import datetime
 from .database.models import Base, Questionnaire, Question, QuestionLogic, TimeSlot
-from .handlers import start, payment, questionnaire, booking
+from .handlers import start, payment, questionnaire, booking, admin
 from .middlewares.db import DbSessionMiddleware
 from sqlalchemy import select
 
@@ -81,13 +84,13 @@ async def main() -> None:
     dp.include_router(payment.router)
     dp.include_router(questionnaire.router)
     dp.include_router(booking.router)
+    dp.include_router(admin.router)
 
     # Start polling
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
