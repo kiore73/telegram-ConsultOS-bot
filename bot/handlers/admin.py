@@ -94,12 +94,12 @@ async def admin_select_slot_date_handler(callback_query: types.CallbackQuery, st
     await callback_query.answer()
 
 
-@router.callback_query(AdminFSM.ADD_SLOT_TIME, F.data.startswith("admin_add_slot_add_time:"))
+@router.callback_query(AdminFSM.ADD_SLOT_TIME, F.data.startswith("admin_add_slot:add_time:"))
 async def admin_add_time_slot_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     """
     Adds the selected time slot to the database.
     """
-    _, _, date_str, time_str = callback_query.data.split(":")
+    _, _, date_str, time_str = callback_query.data.split(":", 3) # Correctly unpack 4 parts
     slot_date = datetime.date.fromisoformat(date_str)
     slot_time = datetime.time.fromisoformat(time_str)
 
@@ -124,12 +124,12 @@ async def admin_add_time_slot_handler(callback_query: types.CallbackQuery, state
     await callback_query.answer()
 
 
-@router.callback_query(AdminFSM.ADD_SLOT_TIME, F.data.startswith("admin_add_slot_back_to_date:"))
+@router.callback_query(AdminFSM.ADD_SLOT_TIME, F.data.startswith("admin_add_slot:back_to_date:"))
 async def admin_add_slot_back_to_date_handler(callback_query: types.CallbackQuery, state: FSMContext):
     """
     Returns from time selection to date selection in admin add slot flow.
     """
-    _, _, date_str = callback_query.data.split(":")
+    _, _, date_str = callback_query.data.split(":", 2) # Correctly unpack 3 parts
     current_date = datetime.date.fromisoformat(date_str) # Get the month of the date that was previously selected
 
     await state.set_state(AdminFSM.ADD_SLOT_DATE)

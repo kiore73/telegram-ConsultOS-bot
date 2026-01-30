@@ -100,7 +100,7 @@ async def get_admin_time_slots_keyboard(selected_date: datetime.date, existing_s
     row = []
     for time_option in times:
         button_text = time_option.strftime("%H:%M")
-        callback_data = f"{prefix}_add_time:{selected_date.isoformat()}:{time_option.isoformat()}"
+        callback_data = f"{prefix}:add_time:{selected_date.isoformat()}:{time_option.isoformat()}" # Changed to use ':'
         
         if time_option in existing_times:
             button_text = f"❌ {button_text}" # Mark as unavailable
@@ -114,7 +114,7 @@ async def get_admin_time_slots_keyboard(selected_date: datetime.date, existing_s
     if row: # Add remaining buttons
         keyboard.append(row)
 
-    keyboard.append([InlineKeyboardButton(text="⬅️ Назад к выбору даты", callback_data=f"{prefix}_back_to_date:{selected_date.isoformat()}")])
+    keyboard.append([InlineKeyboardButton(text="⬅️ Назад к выбору даты", callback_data=f"{prefix}:back_to_date:{selected_date.isoformat()}")])
     keyboard.append([InlineKeyboardButton(text="⬅️ Назад в админку", callback_data="admin_back_to_menu")])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
