@@ -3,6 +3,7 @@ from sqlalchemy import (
     create_engine,
     Column,
     Integer,
+    BigInteger, # Import BigInteger
     String,
     Float,
     Boolean,
@@ -19,7 +20,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, nullable=False) # Changed to BigInteger
     username = Column(String, nullable=True)
     has_paid = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
