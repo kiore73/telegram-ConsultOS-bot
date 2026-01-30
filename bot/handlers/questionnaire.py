@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ..states.questionnaire import QuestionnaireFSM
+from ..states.booking import BookingFSM
 from ..database.models import Question, QuestionLogic, Answer, User
 from ..keyboards.questionnaire import get_question_keyboard
+from ..keyboards.booking import get_calendar_keyboard
 
 router = Router()
 
@@ -18,15 +20,16 @@ async def show_question(bot: Bot, chat_id: int, message_id: int, state: FSMConte
     question = result.scalar_one_or_none()
 
     if question:
-        # Check if this is the final message
-        if question.text == "Спасибо за ваши ответы!":
+        # This is the final message, transition to booking
+        if "Спасибо" in question.text:
+            await state.set_state(BookingFSM.DATE_SELECT)
+            calendar_keyboard = await get_calendar_keyboard(session)
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=question.text
+                text="Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+                reply_markup=calendar_keyboard
             )
-            # TODO: Add logic to proceed to the next step (e.g., booking)
-            await state.clear()
             return
 
         keyboard = await get_question_keyboard(question, session)
@@ -38,9 +41,14 @@ async def show_question(bot: Bot, chat_id: int, message_id: int, state: FSMConte
         )
         await state.update_data(current_question_id=question.id)
     else:
-        await bot.send_message(chat_id, "Опросник завершен или произошла ошибка.")
-        await state.clear()
-
+        # This case means the questionnaire is finished, transition to booking
+        await state.set_state(BookingFSM.DATE_SELECT)
+        calendar_keyboard = await get_calendar_keyboard(session)
+        await bot.send_message(
+            chat_id, 
+            "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+            reply_markup=calendar_keyboard
+        )
 
 @router.callback_query(F.data == "start_questionnaire")
 async def start_questionnaire_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
@@ -105,9 +113,13 @@ async def answer_handler(callback_query: types.CallbackQuery, state: FSMContext,
     if next_question_id:
         await show_question(callback_query.bot, callback_query.from_user.id, callback_query.message.message_id, state, session, next_question_id)
     else:
-        await callback_query.message.edit_text("Спасибо за ваши ответы!")
-        # TODO: Save answers to DB
-        await state.clear()
+        # No more questions, transition to booking
+        await state.set_state(BookingFSM.DATE_SELECT)
+        calendar_keyboard = await get_calendar_keyboard(session)
+        await callback_query.message.edit_text(
+            "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+            reply_markup=calendar_keyboard
+        )
         
     await callback_query.answer()
 
@@ -126,22 +138,20 @@ async def text_answer_handler(message: Message, state: FSMContext, session: Asyn
     if question and question.type == 'text':
         next_question_id = await process_answer(state, session, message.from_user.id, question_id, message.text)
         
-        # We need to delete the user's message and the bot's question message to replace it with a new one
-        # A bit complex, for now, let's just send a new message.
-        # A better approach is to edit the message, but we need its ID. Let's store it in FSM.
-        
         if next_question_id:
-            # For simplicity, sending a new message.
-            # To edit, we would need to get the bot's last message_id.
-            await message.answer("Ответ принят. Следующий вопрос:")
             # HACK: a bit of a hack to get a message_id to edit.
+            # We need to find the bot's message to edit it. Let's just send a new one.
+            await message.answer("Ответ принят. Следующий вопрос:")
             sent_message = await message.answer(".")
             await show_question(message.bot, message.from_user.id, sent_message.message_id, state, session, next_question_id)
         else:
-            await message.answer("Спасибо за ваши ответы!")
-            # TODO: Save answers to DB
-            await state.clear()
-
+            # No more questions, transition to booking
+            await state.set_state(BookingFSM.DATE_SELECT)
+            calendar_keyboard = await get_calendar_keyboard(session)
+            await message.answer(
+                "Спасибо за ответы! Теперь выберите удобную дату для консультации:",
+                reply_markup=calendar_keyboard
+            )
 
 @router.callback_query(F.data == "back_to_previous_question")
 async def back_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
