@@ -1,5 +1,5 @@
-# VERSION 16: Rewritten questionnaire seeding logic
-print("---> RUNNING MAIN.PY VERSION 16 ---")
+# VERSION 17: Simplified and Corrected Seeding
+print("---> RUNNING MAIN.PY VERSION 17 ---")
 import asyncio
 import logging
 import sys
@@ -108,14 +108,12 @@ async def seed_questionnaire(session):
         'q_women_candidiasis': {'text': 'Беспокоят ли вас симптомы молочницы или вагинального дисбиоза?', 'type': 'single', 'options': ['Да', 'Нет']},
         'q_women_cosmetics_amount': {'text': 'Сколько косметических средств вы используете ежедневно?', 'type': 'single', 'options': ['3–4 и менее', '5–8', 'Около 10', 'Более 10']},
         'q_women_ecology': {'text': 'Уделяете ли вы внимание экологичности и безопасности косметических средств?', 'type': 'single', 'options': ['Да', 'Нет', 'Не в первую очередь']},
-        'q_check_gender_for_women_branch': {'text': 'Internal check for branching', 'type': 'internal'}, # Not a real question
         'q_survey_end': {'text': 'Спасибо за ваши ответы! Опросник завершен.', 'type': 'final'},
     }
 
     # 2. Create Question objects and map string IDs to DB IDs
     question_map = {}
     for str_id, q_data in question_defs.items():
-        if q_data['type'] == 'internal': continue # Don't create DB entry for internal nodes
         q = Question(questionnaire_id=main_questionnaire.id, text=q_data['text'], type=q_data['type'])
         session.add(q)
         question_map[str_id] = q
@@ -123,11 +121,9 @@ async def seed_questionnaire(session):
 
     # 3. Define all logic branches declaratively
     logic_rules = [
-        # Start
+        # Start -> Common Block
         {'from': 'q_gender', 'answer': 'Мужчина', 'to': 'q_occupation'},
-        {'from': 'q_gender', 'answer': 'Женщина', 'to': 'q_occupation'}, # Both go to common block first
-
-        # Common Block
+        {'from': 'q_gender', 'answer': 'Женщина', 'to': 'q_occupation'},
         {'from': 'q_occupation', 'answer': 'любой', 'to': 'q_sport_activity'},
         {'from': 'q_sport_activity', 'answer': 'любой', 'to': 'q_chronic_diseases'},
         {'from': 'q_chronic_diseases', 'answer': 'любой', 'to': 'q_family_diseases'},
@@ -177,18 +173,16 @@ async def seed_questionnaire(session):
         {'from': 'q_anemia_cheilitis', 'answer': 'любой', 'to': 'q_anemia_meat'},
         {'from': 'q_anemia_meat', 'answer': 'любой', 'to': 'q_anemia_cold'},
         {'from': 'q_anemia_cold', 'answer': 'любой', 'to': 'q_oda_pain'},
-        {'from': 'q_oda_pain', 'answer': 'Не беспокоят', 'to': 'q_check_gender_for_women_branch'},
         {'from': 'q_oda_pain', 'answer': 'любой', 'to': 'q_oda_pain_level'},
         {'from': 'q_oda_pain_level', 'answer': 'любой', 'to': 'q_oda_stiffness'},
         {'from': 'q_oda_stiffness', 'answer': 'любой', 'to': 'q_oda_diagnosis'},
         {'from': 'q_oda_diagnosis', 'answer': 'любой', 'to': 'q_oda_feet'},
         {'from': 'q_oda_feet', 'answer': 'любой', 'to': 'q_oda_shoes'},
         {'from': 'q_oda_shoes', 'answer': 'любой', 'to': 'q_oda_doctor'},
-        {'from': 'q_oda_doctor', 'answer': 'любой', 'to': 'q_check_gender_for_women_branch'},
-
-        # Gender branch check (INTERNAL, not a real question)
-        {'from': 'q_check_gender_for_women_branch', 'answer': 'Женщина', 'to': 'q_women_menarche'},
-        {'from': 'q_check_gender_for_women_branch', 'answer': 'Мужчина', 'to': 'q_survey_end'},
+        
+        # This is the point where logic diverges. The handler will now manage this.
+        {'from': 'q_oda_doctor', 'answer': 'любой', 'to': 'q_women_menarche'}, 
+        {'from': 'q_oda_pain', 'answer': 'Не беспокоят', 'to': 'q_women_menarche'},
 
         # Women's Branch
         {'from': 'q_women_menarche', 'answer': 'любой', 'to': 'q_women_cycle_status'},
@@ -206,18 +200,26 @@ async def seed_questionnaire(session):
         {'from': 'q_women_cystitis', 'answer': 'любой', 'to': 'q_women_candidiasis'},
         {'from': 'q_women_candidiasis', 'answer': 'любой', 'to': 'q_women_cosmetics_amount'},
         {'from': 'q_women_cosmetics_amount', 'answer': 'любой', 'to': 'q_women_ecology'},
-        {'from': 'q_women_ecology', 'answer': 'любой', 'to': 'q_survey_end'}, # End of women's branch
+        {'from': 'q_women_ecology', 'answer': 'любой', 'to': 'q_survey_end'},
     ]
 
     # 4. Create QuestionLogic entries
     for rule in logic_rules:
+        # Skip rules that don't exist in the question map (like internal nodes)
+        if rule['from'] not in question_map:
+            continue
+        
         from_id = question_map[rule['from']].id
         to_id = question_map.get(rule['to']).id if rule.get('to') else None
         
         # For questions with pre-defined options, create a rule for each option
         if rule['answer'] == 'любой' and question_defs[rule['from']].get('options'):
              for option in question_defs[rule['from']]['options']:
-                 session.add(QuestionLogic(
+                # Do not create a rule for 'Не беспокоят' if a specific one exists
+                if rule['from'] == 'q_oda_pain' and option == 'Не беспокоят':
+                    continue
+                
+                session.add(QuestionLogic(
                      question_id=from_id,
                      answer_value=option,
                      next_question_id=to_id
@@ -294,16 +296,16 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                 user = (await session.execute(select(User).where(User.telegram_id == int(user_telegram_id)))).scalar_one_or_none()
                 payment_record = (await session.execute(select(Payment).where(Payment.provider_charge_id == payment_id_yk))).scalar_one_or_none()
 
-                logging.info(f"DB user found: {{'Yes' if user else 'No'}}")
-                logging.info(f"DB payment record found: {{'Yes' if payment_record else 'No'}}")
+                logging.info(f"DB user found: {'Yes' if user else 'No'}")
+                logging.info(f"DB payment record found: {'Yes' if payment_record else 'No'}")
 
                 if user and payment_record:
-                    logging.info(f"User '{{user_telegram_id}}' has_paid status BEFORE update: {{user.has_paid}}")
+                    logging.info(f"User '{user_telegram_id}' has_paid status BEFORE update: {user.has_paid}")
                     if not user.has_paid:
                         user.has_paid = True
                         payment_record.status = "succeeded"
                         await session.commit()
-                        logging.info(f"User '{{user_telegram_id}}' and payment '{{payment_id_yk}}' status updated to paid/succeeded in DB.")
+                        logging.info(f"User '{user_telegram_id}' and payment '{payment_id_yk}' status updated to paid/succeeded in DB.")
 
                         keyboard = types.InlineKeyboardMarkup(
                             inline_keyboard=[
@@ -315,32 +317,32 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                             "Ваша оплата успешно подтверждена! Теперь вы можете перейти к опроснику.",
                             reply_markup=keyboard
                         )
-                        logging.info(f"Confirmation message sent to user {{user.telegram_id}}.")
+                        logging.info(f"Confirmation message sent to user {user.telegram_id}.")
                         
                         admin_notification_text = (
                             f"💰 <b>Оплата подтверждена!</b>\n\n"
-                            f"Пользователь: @{{user.username or 'N/A'}} (ID: <code>{{user.telegram_id}}</code>)\n"
-                            f"Сумма: {{notification.object.amount.value}} {{notification.object.amount.currency}}\n"
-                            f"YooKassa ID: <code>{{payment_id_yk}}</code>"
+                            f"Пользователь: @{user.username or 'N/A'} (ID: <code>{user.telegram_id}</code>)\n"
+                            f"Сумма: {notification.object.amount.value} {notification.object.amount.currency}\n"
+                            f"YooKassa ID: <code>{payment_id_yk}</code>"
                         )
                         for admin_id in settings.admin_ids_list:
                             try:
                                 await bot.send_message(admin_id, admin_notification_text)
-                                logging.info(f"Admin notification sent to {{admin_id}}.")
+                                logging.info(f"Admin notification sent to {admin_id}.")
                             except Exception as e:
-                                logging.error(f"Failed to send notification to admin {{admin_id}}: {{e}}")
+                                logging.error(f"Failed to send notification to admin {admin_id}: {e}")
                     else:
-                        logging.info(f"User {{user_telegram_id}} already marked as paid. Skipping confirmation message.")
+                        logging.info(f"User {user_telegram_id} already marked as paid. Skipping confirmation message.")
                 else:
-                    logging.error(f"Webhook processing failed: User or Payment record not found for YK Payment ID {{payment_id_yk}}.")
+                    logging.error(f"Webhook processing failed: User or Payment record not found for YK Payment ID {payment_id_yk}.")
             
         elif notification.event == 'payment.canceled':
-            logging.warning(f"YooKassa payment {{notification.object.id}} was canceled.")
+            logging.warning(f"YooKassa payment {notification.object.id} was canceled.")
 
         return web.Response(status=200)
 
     except Exception as e:
-        logging.error(f"Error processing YooKassa webhook: {{e}}", exc_info=True)
+        logging.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
         return web.Response(status=500)
 
 

@@ -96,27 +96,29 @@ async def go_to_next_question(
 ):
     """ 
     Transitions to the next question or ends the questionnaire.
-    Handles internal branching nodes.
+    Handles gender-based branching logic.
     """
     q_cache = questionnaire_service.get_cache()
     
-    # Handle internal branching node for gender
-    if next_question_id and q_cache.get_question(next_question_id).type == 'internal':
-        current_data = await state.get_data()
-        answers = current_data.get("answers", {})
-        
-        # Robustly get the gender question's ID from the state
-        gender_q_id = current_data.get("gender_question_id")
-        
-        gender_answer = answers.get(str(gender_q_id)) if gender_q_id else None
-        
-        # Determine the next step based on gender
-        final_next_id = q_cache.get_next_question_id(next_question_id, gender_answer)
-        logging.info(f"Internal branch: gender_answer='{gender_answer}', redirecting to QID {final_next_id}")
-
-        # Recursively call itself to proceed to the correct next question
-        await go_to_next_question(bot, chat_id, message_id, state, questionnaire_service, session, final_next_id)
-        return
+    # Check for gender-based branching before showing the question
+    if next_question_id:
+        next_question = q_cache.get_question(next_question_id)
+        # If the next question is the start of the women's branch
+        if next_question and "возраст начала первой менструации" in next_question.text:
+            current_data = await state.get_data()
+            answers = current_data.get("answers", {})
+            gender_q_id = str(current_data.get("gender_question_id"))
+            
+            if gender_q_id and answers.get(gender_q_id) == "Мужчина":
+                logging.info("User is male, skipping women's branch and ending survey.")
+                # Find the end question and jump to it
+                end_q_id = None
+                for qid, q in q_cache.questions.items():
+                    if q.type == 'final':
+                        end_q_id = qid
+                        break
+                await go_to_next_question(bot, chat_id, message_id, state, questionnaire_service, session, end_q_id)
+                return
 
     if next_question_id:
         await show_question(bot, chat_id, message_id, state, questionnaire_service, session, next_question_id)
