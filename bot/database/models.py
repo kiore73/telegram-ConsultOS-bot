@@ -54,7 +54,7 @@ class Question(Base):
     text = Column(String, nullable=False)
     type = Column(String, nullable=False)  # single, multi, text, photo
     questionnaire = relationship("Questionnaire", back_populates="questions")
-    logic_rules = relationship("QuestionLogic", back_populates="question")
+    logic_rules = relationship("QuestionLogic", back_populates="question", foreign_keys="[QuestionLogic.question_id]")
 
 
 Questionnaire.questions = relationship(
@@ -68,7 +68,7 @@ class QuestionLogic(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     answer_value = Column(String, nullable=False)
     next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=True) # Allow null
-    question = relationship("Question", back_populates="logic_rules")
+    question = relationship("Question", back_populates="logic_rules", foreign_keys=[question_id])
 
 
 class Answer(Base):
