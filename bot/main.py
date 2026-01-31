@@ -1,4 +1,4 @@
-# VERSION 9: Final logic, SyntaxError fix, and compat mode
+# VERSION 9: Final explicit logic for init_db and SyntaxError fix
 print("---> RUNNING MAIN.PY VERSION 9 ---")
 import asyncio
 import logging
@@ -123,7 +123,6 @@ async def init_db():
 
             question_map = {}
             for q_def in question_definitions:
-                # Removed allow_photo kwarg to be compatible with cached model
                 q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'])
                 session.add(q)
                 question_map[q_def['str_id']] = q
@@ -142,14 +141,19 @@ async def init_db():
                 {'q': 'general_04', 'a': 'любой', 'next_q': 'general_05'},
                 {'q': 'general_05', 'a': 'любой', 'next_q': 'general_06'},
                 {'q': 'general_06', 'a': 'любой', 'next_q': 'general_07'},
-                {'q': 'general_07', 'a': 'любой', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'очень часто', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'иногда', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'сезонно', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'нет', 'next_q': 'general_08'},
                 {'q': 'general_08', 'a': 'очень редко', 'next_q': 'general_09'},
                 {'q': 'general_08', 'a': '1–2 раза в год', 'next_q': 'general_09'},
                 {'q': 'general_08', 'a': '3–4 раза в год', 'next_q': 'anemia_01'},
                 {'q': 'general_08', 'a': 'постоянно, даже летом', 'next_q': 'anemia_01'},
                 {'q': 'general_09', 'a': 'любой', 'next_q': 'general_10'},
                 {'q': 'general_10', 'a': 'любой', 'next_q': 'general_11'},
-                {'q': 'general_11', 'a': 'любой', 'next_q': 'general_12'},
+                {'q': 'general_11', 'a': 'да, стараюсь придерживаться', 'next_q': 'general_12'},
+                {'q': 'general_11', 'a': 'да, но не получается соблюдать', 'next_q': 'general_12'},
+                {'q': 'general_11', 'a': 'нет, не знаком', 'next_q': 'general_12'},
                 {'q': 'general_12', 'a': 'любой', 'next_q': 'general_13'},
                 {'q': 'general_13', 'a': 'да, часто', 'next_q': 'nervous_01'},
                 {'q': 'general_13', 'a': 'иногда', 'next_q': 'nervous_01'},
@@ -160,8 +164,12 @@ async def init_db():
                 {'q': 'general_14', 'a': 'пониженное', 'next_q': 'anemia_01'},
                 {'q': 'general_14', 'a': 'нестабильное', 'next_q': 'anemia_01'},
                 {'q': 'general_15', 'a': 'любой', 'next_q': 'general_16'},
-                {'q': 'general_16', 'a': 'любой', 'next_q': 'general_17'},
-                {'q': 'general_17', 'a': 'любой', 'next_q': 'general_18'},
+                {'q': 'general_16', 'a': 'да', 'next_q': 'general_17'},
+                {'q': 'general_16', 'a': 'иногда', 'next_q': 'general_17'},
+                {'q': 'general_16', 'a': 'нет', 'next_q': 'general_17'},
+                {'q': 'general_17', 'a': 'нет', 'next_q': 'general_18'},
+                {'q': 'general_17', 'a': 'часто', 'next_q': 'general_18'},
+                {'q': 'general_17', 'a': 'иногда', 'next_q': 'general_18'},
                 {'q': 'general_18', 'a': 'любой', 'next_q': 'general_19'},
                 {'q': 'general_19', 'a': 'да, всё хорошо', 'next_q': 'general_20'},
                 {'q': 'general_19', 'a': 'есть проблемы с кожей', 'next_q': 'skin_01'},
