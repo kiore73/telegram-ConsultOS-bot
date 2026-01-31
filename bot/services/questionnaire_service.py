@@ -33,13 +33,20 @@ class QuestionnaireCache:
     def get_next_question_id(self, current_question_id: int, answer: str) -> Optional[int]:
         """Finds the next question ID based on the current question and answer."""
         question_logic = self.logic.get(current_question_id, {})
+        next_q_id = None
         # Exact match first
         if answer in question_logic:
-            return question_logic[answer]
+            next_q_id = question_logic[answer]
+            logging.debug(f"QID {current_question_id}: Exact match for answer '{answer}', next QID: {next_q_id}")
         # Fallback to a generic "any" rule
-        if "любой" in question_logic:
-            return question_logic["любой"]
-        return None
+        elif "любой" in question_logic:
+            next_q_id = question_logic["любой"]
+            logging.debug(f"QID {current_question_id}: Fallback to 'любой' for answer '{answer}', next QID: {next_q_id}")
+        
+        if next_q_id is None:
+            logging.debug(f"QID {current_question_id}: No next question found for answer '{answer}'")
+        
+        return next_q_id
 
 # --- Service to Build and Hold the Cache ---
 

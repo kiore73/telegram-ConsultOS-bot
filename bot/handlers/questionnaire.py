@@ -82,7 +82,9 @@ async def process_answer(state: FSMContext, questionnaire_service: Questionnaire
     
     await state.update_data(answers=answers, question_history=question_history)
     
-    return q_cache.get_next_question_id(question_id, logic_answer_value)
+    next_q_id = q_cache.get_next_question_id(question_id, logic_answer_value)
+    logging.debug(f"process_answer: QID {question_id}, Answer '{logic_answer_value}' -> Next QID: {next_q_id}")
+    return next_q_id
 
 
 async def go_to_next_question(
@@ -98,6 +100,7 @@ async def go_to_next_question(
     Transitions to the next question or ends the questionnaire.
     Handles gender-based branching logic.
     """
+    logging.debug(f"go_to_next_question called with next_question_id: {next_question_id}")
     q_cache = questionnaire_service.get_cache()
     
     # Check for gender-based branching before showing the question
@@ -105,6 +108,7 @@ async def go_to_next_question(
         next_question = q_cache.get_question(next_question_id)
         # If the next question is the start of the women's branch
         if next_question and "возраст начала первой менструации" in next_question.text:
+            logging.debug(f"go_to_next_question: Detected women's branch start (QID {next_question_id}).")
             current_data = await state.get_data()
             answers = current_data.get("answers", {})
             gender_q_id = str(current_data.get("gender_question_id"))
@@ -117,12 +121,16 @@ async def go_to_next_question(
                     if q.type == 'final':
                         end_q_id = qid
                         break
+                logging.debug(f"go_to_next_question: Redirecting male user to final QID: {end_q_id}")
                 await go_to_next_question(bot, chat_id, message_id, state, questionnaire_service, session, end_q_id)
                 return
+            else:
+                logging.debug(f"go_to_next_question: User is female or gender not specified, proceeding to women's branch.")
 
     if next_question_id:
         await show_question(bot, chat_id, message_id, state, questionnaire_service, session, next_question_id)
     else:
+        logging.info("go_to_next_question: No further next_question_id, ending questionnaire.")
         # End of questionnaire, transition to booking
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
