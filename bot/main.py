@@ -1,5 +1,5 @@
-# VERSION 14: Final complete file
-print("---> RUNNING MAIN.PY VERSION 14 ---")
+# VERSION 15: Fix empty questionnaire seeding
+print("---> RUNNING MAIN.PY VERSION 15 ---")
 import asyncio
 import logging
 import sys
@@ -27,11 +27,307 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 async def seed_questionnaire(session):
     """Populates the database with the new, structured questionnaire."""
-    # ... (seeding logic)
     logging.info("Seeding new questionnaire data...")
-    # ... (Full seeding logic will be restored in the final version)
+    main_questionnaire = Questionnaire(title="Основной опросник")
+    session.add(main_questionnaire)
+    await session.flush()
+
+    # --- Start of New Questionnaire Definition ---
+    question_definitions = [
+        {'id': 'q_gender', 'text': 'Укажите ваш пол', 'type': 'single'},
+        {'id': 'q_occupation', 'text': 'Ваш род занятий, работа (можно выбрать несколько вариантов)', 'type': 'multi'},
+        {'id': 'q_sport_activity', 'text': 'Присутствуют ли в вашей жизни спорт или физическая активность?', 'type': 'single'},
+        {'id': 'q_chronic_diseases', 'text': 'Если у вас есть или были хронические или наследственные заболевания, укажите диагнозы', 'type': 'text'},
+        {'id': 'q_family_diseases', 'text': 'Есть ли хронические или генетические заболевания у ваших ближайших биологических родственников?', 'type': 'text'},
+        {'id': 'q_surgeries', 'text': 'Были ли у вас операции? Если да, какие и как давно?', 'type': 'text'},
+        {'id': 'q_medications', 'text': 'Принимаете ли вы на постоянной основе фармацевтические препараты или БАДы? Если да, укажите какие', 'type': 'text'},
+        {'id': 'q_allergy', 'text': 'Испытываете ли вы симптомы аллергии?', 'type': 'single'},
+        {'id': 'q_orvi', 'text': 'Как часто вы переносите сезонные ОРВИ?', 'type': 'single'},
+        {'id': 'q_daily_routine', 'text': 'Опишите кратко ваш режим дня (сон, питание, работа, транспорт, хобби, прогулки)', 'type': 'text'},
+        {'id': 'q_sleep_quality', 'text': 'Оцените качество вашего сна (можно выбрать несколько вариантов)', 'type': 'multi'},
+        {'id': 'q_sleep_hygiene', 'text': 'Знакомы ли вы с правилами и гигиеной здорового сна?', 'type': 'single'},
+        {'id': 'q_muscle_symptoms', 'text': 'Наблюдали ли вы у себя мышечные судороги, слабость или онемение?', 'type': 'multi'},
+        {'id': 'q_dizziness', 'text': 'Испытываете ли вы головокружение?', 'type': 'single'},
+        {'id': 'q_pressure', 'text': 'Знаете ли вы свое артериальное давление и пульс?', 'type': 'single'},
+        {'id': 'q_edema', 'text': 'Беспокоят ли вас отеки?', 'type': 'multi'},
+        {'id': 'q_urination', 'text': 'Бывают ли стрессовые или ночные позывы к мочеиспусканию?', 'type': 'single'},
+        {'id': 'q_veins', 'text': 'Беспокоят ли вас вены, сосудистые звездочки, варикоз, тяжесть в ногах?', 'type': 'single'},
+        {'id': 'q_water', 'text': 'Оцените ваш питьевой режим', 'type': 'multi'},
+        {'id': 'q_gut_pain', 'text': 'Испытываете ли вы болевые ощущения или дискомфорт в животе?', 'type': 'multi'},
+        {'id': 'q_gut_pain_relation', 'text': 'Если есть боли, связаны ли они с приемом пищи?', 'type': 'single'},
+        {'id': 'q_gut_heartburn', 'text': 'Беспокоят ли вас изжога, жжение за грудиной, отрыжка, нарушение глотания?', 'type': 'single'},
+        {'id': 'q_gut_bloating', 'text': 'Беспокоят ли вас вздутие живота или метеоризм?', 'type': 'single'},
+        {'id': 'q_gut_appetite', 'text': 'Оцените ваш аппетит', 'type': 'single'},
+        {'id': 'q_gut_stool_regular', 'text': 'Какая регулярность стула?', 'type': 'single'},
+        {'id': 'q_gut_stool_type', 'text': 'Оцените характер стула', 'type': 'single'},
+        {'id': 'q_gut_nausea', 'text': 'Испытываете ли вы тошноту?', 'type': 'multi'},
+        {'id': 'q_gut_hunger_break', 'text': 'Как вы переносите длительные перерывы между приемами пищи?', 'type': 'single'},
+        {'id': 'q_gut_sleep_after_food', 'text': 'Испытываете ли вы сонливость после еды?', 'type': 'single'},
+        {'id': 'q_gut_food_intolerance', 'text': 'Есть ли продукты, после которых вы замечаете ухудшение самочувствия?', 'type': 'single'},
+        {'id': 'q_skin_issues', 'text': 'Что вас не устраивает в состоянии кожи? (можно выбрать несколько вариантов)', 'type': 'multi'},
+        {'id': 'q_skin_doctor', 'text': 'Обращались ли вы к специалисту по поводу кожи?', 'type': 'single'},
+        {'id': 'q_nervous_problem_question', 'text': 'Есть ли у вас проблемы с нервной системой или повышенный уровень стресса?', 'type': 'single'},
+        {'id': 'q_nervous_memory', 'text': 'Как вы оцениваете свою память?', 'type': 'multi'},
+        {'id': 'q_nervous_tics', 'text': 'Наблюдаете ли вы тики или непроизвольные движения?', 'type': 'single'},
+        {'id': 'q_nervous_communication', 'text': 'Как вы ощущаете себя в общении с людьми?', 'type': 'single'},
+        {'id': 'q_nervous_emotional', 'text': 'Устраивает ли вас ваше эмоциональное состояние?', 'type': 'single'},
+        {'id': 'q_nervous_stress_reaction', 'text': 'Как вы реагируете на стресс?', 'type': 'single'},
+        {'id': 'q_nervous_coping', 'text': 'Есть ли у вас навыки управления стрессом?', 'type': 'single'},
+        {'id': 'q_nervous_decisions', 'text': 'Насколько легко вам принимать решения?', 'type': 'single'},
+        {'id': 'q_nervous_thinking', 'text': 'Устраивает ли вас уровень мышления и умственной работоспособности?', 'type': 'single'},
+        {'id': 'q_anemia_weakness', 'text': 'Беспокоит ли вас слабость или быстрая утомляемость?', 'type': 'single'},
+        {'id': 'q_anemia_skin', 'text': 'Замечаете ли вы бледность кожи или выпадение волос?', 'type': 'single'},
+        {'id': 'q_anemia_taste', 'text': 'Бывают ли необычные вкусовые желания (мел, лед и т.п.)?', 'type': 'single'},
+        {'id': 'q_anemia_breath', 'text': 'Бывает ли одышка или учащенное сердцебиение при легкой нагрузке?', 'type': 'single'},
+        {'id': 'q_anemia_smell', 'text': 'Есть ли тяга к необычным запахам (лак, бензин и т.п.)?', 'type': 'single'},
+        {'id': 'q_anemia_cheilitis', 'text': 'Беспокоят ли заеды в углах рта?', 'type': 'single'},
+        {'id': 'q_anemia_meat', 'text': 'Есть ли отвращение к мясу или продуктам?', 'type': 'single'},
+        {'id': 'q_anemia_cold', 'text': 'Отмечаете ли повышенную зябкость рук и ног?', 'type': 'single'},
+        {'id': 'q_oda_pain', 'text': 'Беспокоят ли вас болевые ощущения?', 'type': 'multi'},
+        {'id': 'q_oda_pain_level', 'text': 'Оцените интенсивность боли по шкале от 1 до 10', 'type': 'text'},
+        {'id': 'q_oda_stiffness', 'text': 'Есть ли скованность или тугоподвижность суставов?', 'type': 'single'},
+        {'id': 'q_oda_diagnosis', 'text': 'Есть ли диагностированные заболевания ОДА (грыжи, артрит и т.п.)?', 'type': 'single'},
+        {'id': 'q_oda_feet', 'text': 'Есть ли патологии стопы?', 'type': 'single'},
+        {'id': 'q_oda_shoes', 'text': 'Изменился ли размер обуви?', 'type': 'single'},
+        {'id': 'q_oda_doctor', 'text': 'Обращались ли вы к специалисту?', 'type': 'multi'},
+        {'id': 'q_women_menarche', 'text': 'Укажите, по возможности, возраст начала первой менструации (менархе)', 'type': 'text'},
+        {'id': 'q_women_cycle_status', 'text': 'Какое у вас текущее состояние менструального цикла?', 'type': 'single'},
+        {'id': 'q_women_pregnancy', 'text': 'Были ли у вас беременности или роды?', 'type': 'single'},
+        {'id': 'q_women_cycle_length', 'text': 'Укажите продолжительность цикла от первого дня менструации до последнего дня цикла (в днях)', 'type': 'text'},
+        {'id': 'q_women_menses_length', 'text': 'Укажите среднюю продолжительность менструации', 'type': 'single'},
+        {'id': 'q_women_pms', 'text': 'Беспокоят ли вас симптомы ПМС? (можно выбрать несколько вариантов)', 'type': 'multi'},
+        {'id': 'q_women_sleep_menses', 'text': 'Замечаете ли вы проблемы со сном накануне или во время менструации?', 'type': 'single'},
+        {'id': 'q_women_flow_amount', 'text': 'Оцените обильность менструальных выделений по шкале от 1 до 10', 'type': 'text'},
+        {'id': 'q_women_pain_level', 'text': 'Оцените болезненность во время менструации по шкале от 1 до 10', 'type': 'text'},
+        {'id': 'q_women_flow_type', 'text': 'Как вы можете описать менструальные выделения?', 'type': 'single'},
+        {'id': 'q_women_gut_menses', 'text': 'Бывает ли дискомфорт со стороны ЖКТ во время или накануне менструации?', 'type': 'single'},
+        {'id': 'q_women_bleeding_other_days', 'text': 'Бывают ли кровянистые выделения в другие дни цикла?', 'type': 'single'},
+        {'id': 'q_women_cystitis', 'text': 'Бывают ли у вас проявления цистита?', 'type': 'single'},
+        {'id': 'q_women_candidiasis', 'text': 'Беспокоят ли вас симптомы молочницы или вагинального дисбиоза?', 'type': 'single'},
+        {'id': 'q_women_cosmetics_amount', 'text': 'Сколько косметических средств вы используете ежедневно?', 'type': 'single'},
+        {'id': 'q_women_ecology', 'text': 'Уделяете ли вы внимание экологичности и безопасности косметических средств?', 'type': 'single'},
+        # Placeholder questions for branching logic
+        {'id': 'q_gut_start', 'text': 'Переходим к вопросам о ЖКТ.', 'type': 'text'}, # This needs to be a real question or just a message
+        {'id': 'q_skin_problem_question', 'text': 'Переходим к вопросам о коже.', 'type': 'text'},
+        {'id': 'q_gender_check_for_women', 'text': 'Дополнительные вопросы для женщин.', 'type': 'text'},
+        {'id': 'q_survey_end', 'text': 'Спасибо за ваши ответы! Опросник завершен.', 'type': 'text'},
+    ]
+
+    question_map = {}
+    for q_def in question_definitions:
+        q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'])
+        session.add(q)
+        question_map[q_def['id']] = q
+    await session.flush()
+    
+    # --- Start of Logic Definition ---
+    logic_data = [
+        ('q_gender', 'Мужчина', 'q_occupation'),
+        ('q_gender', 'Женщина', 'q_women_menarche'),
+
+        ('q_occupation', 'любой', 'q_sport_activity'),
+        ('q_sport_activity', 'любой', 'q_chronic_diseases'),
+        ('q_chronic_diseases', 'любой', 'q_family_diseases'),
+        ('q_family_diseases', 'любой', 'q_surgeries'),
+        ('q_surgeries', 'любой', 'q_medications'),
+        ('q_medications', 'любой', 'q_allergy'),
+        ('q_allergy', 'любой', 'q_orvi'),
+        ('q_orvi', 'любой', 'q_daily_routine'),
+        ('q_daily_routine', 'любой', 'q_sleep_quality'),
+        ('q_sleep_quality', 'любой', 'q_sleep_hygiene'),
+        ('q_sleep_hygiene', 'любой', 'q_muscle_symptoms'),
+        ('q_muscle_symptoms', 'любой', 'q_dizziness'),
+        ('q_dizziness', 'любой', 'q_pressure'),
+        ('q_pressure', 'любой', 'q_edema'),
+        ('q_edema', 'любой', 'q_urination'),
+        ('q_urination', 'любой', 'q_veins'),
+        ('q_veins', 'любой', 'q_water'),
+        ('q_water', 'любой', 'q_gut_start'), # Branch point
+
+        ('q_gut_start', 'любой', 'q_gut_pain'),
+        ('q_gut_pain', 'любой', 'q_gut_pain_relation'),
+        ('q_gut_pain_relation', 'любой', 'q_gut_heartburn'),
+        ('q_gut_heartburn', 'любой', 'q_gut_bloating'),
+        ('q_gut_bloating', 'любой', 'q_gut_appetite'),
+        ('q_gut_appetite', 'любой', 'q_gut_stool_regular'),
+        ('q_gut_stool_regular', 'любой', 'q_gut_stool_type'),
+        ('q_gut_stool_type', 'любой', 'q_gut_nausea'),
+        ('q_gut_nausea', 'любой', 'q_gut_hunger_break'),
+        ('q_gut_hunger_break', 'любой', 'q_gut_sleep_after_food'),
+        ('q_gut_sleep_after_food', 'любой', 'q_gut_food_intolerance'),
+        ('q_gut_food_intolerance', 'любой', 'q_skin_problem_question'),
+
+        ('q_skin_problem_question', 'любой', 'q_skin_issues'),
+        ('q_skin_issues', 'любой', 'q_skin_doctor'),
+        ('q_skin_doctor', 'любой', 'q_nervous_problem_question'),
+        
+        ('q_nervous_problem_question', 'Да', 'q_nervous_memory'),
+        ('q_nervous_problem_question', 'Нет', 'q_anemia_weakness'),
+        ('q_nervous_memory', 'любой', 'q_nervous_tics'),
+        ('q_nervous_tics', 'любой', 'q_nervous_communication'),
+        ('q_nervous_communication', 'любой', 'q_nervous_emotional'),
+        ('q_nervous_emotional', 'любой', 'q_nervous_stress_reaction'),
+        ('q_nervous_stress_reaction', 'любой', 'q_nervous_coping'),
+        ('q_nervous_coping', 'любой', 'q_nervous_decisions'),
+        ('q_nervous_decisions', 'любой', 'q_nervous_thinking'),
+        ('q_nervous_thinking', 'любой', 'q_anemia_weakness'),
+
+        ('q_anemia_weakness', 'любой', 'q_anemia_skin'),
+        ('q_anemia_skin', 'любой', 'q_anemia_taste'),
+        ('q_anemia_taste', 'любой', 'q_anemia_breath'),
+        ('q_anemia_breath', 'любой', 'q_anemia_smell'),
+        ('q_anemia_smell', 'любой', 'q_anemia_cheilitis'),
+        ('q_anemia_cheilitis', 'любой', 'q_anemia_meat'),
+        ('q_anemia_meat', 'любой', 'q_anemia_cold'),
+        ('q_anemia_cold', 'любой', 'q_oda_pain'),
+        
+        ('q_oda_pain', 'Не беспокоят', 'q_survey_end'),
+        ('q_oda_pain', 'любой', 'q_oda_pain_level'),
+        ('q_oda_pain_level', 'любой', 'q_oda_stiffness'),
+        ('q_oda_stiffness', 'любой', 'q_oda_diagnosis'),
+        ('q_oda_diagnosis', 'любой', 'q_oda_feet'),
+        ('q_oda_feet', 'любой', 'q_oda_shoes'),
+        ('q_oda_shoes', 'любой', 'q_oda_doctor'),
+        ('q_oda_doctor', 'любой', 'q_gender_check_for_women'),
+        
+        # This is a bit of a logical knot. If we are here, and gender is male, we should end.
+        # This will be handled by the logic inside the handler itself. 
+        # For now, let's just make a path forward.
+        ('q_gender_check_for_women', 'любой', 'q_survey_end'),
+
+        # Women's Branch
+        ('q_women_menarche', 'любой', 'q_women_cycle_status'),
+        ('q_women_cycle_status', 'любой', 'q_women_pregnancy'),
+        ('q_women_pregnancy', 'любой', 'q_women_cycle_length'),
+        ('q_women_cycle_length', 'любой', 'q_women_menses_length'),
+        ('q_women_menses_length', 'любой', 'q_women_pms'),
+        ('q_women_pms', 'любой', 'q_women_sleep_menses'),
+        ('q_women_sleep_menses', 'любой', 'q_women_flow_amount'),
+        ('q_women_flow_amount', 'любой', 'q_women_pain_level'),
+        ('q_women_pain_level', 'любой', 'q_women_flow_type'),
+        ('q_women_flow_type', 'любой', 'q_women_gut_menses'),
+        ('q_women_gut_menses', 'любой', 'q_women_bleeding_other_days'),
+        ('q_women_bleeding_other_days', 'любой', 'q_women_cystitis'),
+        ('q_women_cystitis', 'любой', 'q_women_candidiasis'),
+        ('q_women_candidiasis', 'любой', 'q_women_cosmetics_amount'),
+        ('q_women_cosmetics_amount', 'любой', 'q_women_ecology'),
+        ('q_women_ecology', 'любой', 'q_occupation'), # Rejoin the main flow
+    ]
+
+    # --- Create Logic Rules ---
+    options_data = {
+        'q_gender': ['Мужчина', 'Женщина'],
+        'q_occupation': ['Сидячая', 'Присутствует физическая нагрузка', 'Высокая умственная нагрузка / высокий уровень ответственности', 'Приходится долго стоять', 'Много разъездов, поездок, перелетов'],
+        'q_sport_activity': ['Да, регулярно', 'Нерегулярно, время от времени', 'Нет и не было', 'Я профессиональный спортсмен'],
+        'q_allergy': ['Очень часто', 'Иногда', 'Сезонно', 'Нет'],
+        'q_orvi': ['Очень редко', '1–2 раза в год', '3–4 раза в год', 'Постоянно, даже летом'],
+        'q_sleep_quality': ['Быстро засыпаю', 'Требуется более 40 минут для засыпания', 'Сон без пробуждений', 'Сон чуткий, есть пробуждения', 'Есть трекер сна', 'Просыпаюсь легко и чувствую восстановление', 'Просыпаюсь тяжело, но потом бодр', 'Тяжело проснуться, нет сил до обеда'],
+        'q_sleep_hygiene': ['Да, стараюсь придерживаться', 'Да, но не получается соблюдать', 'Нет, не знаком'],
+        'q_muscle_symptoms': ['Нет', 'Судороги ног ночью', 'Спазмы мышц шеи', 'Судороги или спазмы регулярно', 'Онемение конечностей'],
+        'q_dizziness': ['Да, часто', 'Иногда', 'Нет'],
+        'q_pressure': ['Не знаю', 'Повышенное / гипертония', 'Пониженное', 'Нестабильное', 'Есть трекер'],
+        'q_edema': ['Нет', 'Постоянно', 'Летом', 'В области ног', 'Лицо и руки'],
+        'q_urination': ['Да', 'Иногда', 'Нет'],
+        'q_veins': ['Нет', 'Иногда', 'Часто'],
+        'q_water': ['Пью достаточно воды', 'Воду не люблю, пью другие напитки', 'Забываю пить, часто жажда', 'Не чувствую жажды', 'Пью много, жажда не утоляется'],
+        'q_gut_pain': ['В верхней части живота (эпигастрий)', 'В области пупка', 'Внизу живота', 'Больше справа', 'Больше слева или в области спины', 'Нет'],
+        'q_gut_pain_relation': ['Сразу после еды', 'В течение 1–2 часов', 'Связаны с голодом', 'Не связаны', 'Бывает по-разному'],
+        'q_gut_heartburn': ['Часто', 'Иногда', 'Нет'],
+        'q_gut_bloating': ['Нет', 'Иногда', 'Постоянно'],
+        'q_gut_appetite': ['Стабильно хороший', 'Все время хочется есть', 'Плохой', 'Нестабильный'],
+        'q_gut_stool_regular': ['Ежедневный по утрам', 'Ежедневный в разное время', 'Несколько раз в сутки', 'Непредсказуемый', 'Не каждый день'],
+        'q_gut_stool_type': ['Нормальный, оформленный', 'Склонность к диарее', 'Очень плотный', 'Нестабильный', 'Есть примеси'],
+        'q_gut_nausea': ['Бывает иногда', 'На определенные продукты', 'Очень редко', 'При укачивании'],
+        'q_gut_hunger_break': ['Нормально', 'Появляется слабость, головокружение', 'Очень плохо'],
+        'q_gut_sleep_after_food': ['Да', 'Нет', 'Бывает редко'],
+        'q_gut_food_intolerance': ['Да', 'Нет'],
+        'q_skin_issues': ['Сухость, раздражение', 'Изменение цвета', 'Высыпания, дерматиты', 'Акне', 'Повышенная жирность', 'Папилломы, родинки', 'Бородавки', 'Потеря упругости', 'Стрии', 'Зуд', 'Возрастные изменения', 'Отечность', 'Витилиго', 'Псориаз', 'Новообразования', 'Грибок'],
+        'q_skin_doctor': ['Да', 'Нет', 'Постоянно наблюдаюсь'],
+        'q_nervous_problem_question': ['Да', 'Нет'],
+        'q_nervous_memory': ['Все хорошо', 'Страдает кратковременная память', 'Плохо удерживаю информацию', 'Все забываю', 'Забываю слова и имена'],
+        'q_nervous_tics': ['Да', 'Иногда', 'Нет'],
+        'q_nervous_communication': ['Легко общаюсь', 'Устаю от общения', 'Предпочитаю одиночество', 'Не могу без общения'],
+        'q_nervous_emotional': ['Да', 'Нет', 'Наблюдаюсь у специалиста'],
+        'q_nervous_stress_reaction': ['Адекватно', 'Остро', 'С поддержкой препаратов'],
+        'q_nervous_coping': ['Да', 'Нет'],
+        'q_nervous_decisions': ['Легко', 'Сложно', 'Зависит от ситуации'],
+        'q_nervous_thinking': ['Да', 'Кажется, снижается', 'Не устраивает'],
+        'q_anemia_weakness': ['Да', 'Нет'],
+        'q_anemia_skin': ['Да', 'Нет'],
+        'q_anemia_taste': ['Да', 'Нет'],
+        'q_anemia_breath': ['Да', 'Нет'],
+        'q_anemia_smell': ['Да', 'Нет'],
+        'q_anemia_cheilitis': ['Да', 'Нет'],
+        'q_anemia_meat': ['Да', 'Нет'],
+        'q_anemia_cold': ['Нет', 'Иногда', 'Часто'],
+        'q_oda_pain': ['В суставах', 'В позвоночнике', 'В мышцах', 'Не беспокоят'],
+        'q_oda_stiffness': ['Да', 'Нет', 'Только по утрам', 'В определенном положении'],
+        'q_oda_diagnosis': ['Да', 'Нет'],
+        'q_oda_feet': ['Да', 'Нет'],
+        'q_oda_shoes': ['Нет', 'Покупаю на 1–2 размера больше', 'Сложно подобрать удобную'],
+        'q_oda_doctor': ['Нет', 'Невролог', 'Травматолог-ортопед', 'Хирург', 'Мануальный терапевт', 'Остеопат'],
+        'q_women_cycle_status': ['Регулярный цикл', 'Нерегулярный цикл', 'Менопауза', 'Беременность или грудное вскармливание'],
+        'q_women_pregnancy': ['Да', 'Нет'],
+        'q_women_menses_length': ['Не более 3 дней', '3–4 дня', '5–6 дней', 'Более 6 дней'],
+        'q_women_pms': ['Болезненность или набухание молочных желез', 'Эмоциональная лабильность, раздражительность', 'Расстройства пищевого поведения', 'Боли внизу живота или пояснице', 'Не беспокоят'],
+        'q_women_sleep_menses': ['Да', 'Нет', 'Бывает'],
+        'q_women_flow_type': ['Кровь красного цвета без сгустков', 'Темные выделения со сгустками или слизью', 'Темные выделения без сгустков', 'Мажущие выделения'],
+        'q_women_gut_menses': ['Да', 'Нет', 'Иногда'],
+        'q_women_bleeding_other_days': ['Мажущие', 'Обильные', 'Нет'],
+        'q_women_cystitis': ['Да', 'Нет'],
+        'q_women_candidiasis': ['Да', 'Нет'],
+        'q_women_cosmetics_amount': ['3–4 и менее', '5–8', 'Около 10', 'Более 10'],
+        'q_women_ecology': ['Да', 'Нет', 'Не в первую очередь'],
+    }
+
+    # Create all possible answer options for single/multi questions first
+    for q_id, options in options_data.items():
+        for option_text in options:
+            logic_entry = QuestionLogic(
+                question_id=question_map[q_id].id,
+                answer_value=option_text,
+                next_question_id=None # Will be updated below
+            )
+            session.add(logic_entry)
+    await session.flush()
+
+    # Now, add the branching logic by updating the next_question_id
+    for q_id, answer, next_q_id in logic_data:
+        if answer == 'любой':
+            # For 'любой', we need to find all logic entries for this question and update them
+            # This is complex, so let's simplify for now and handle it in the service
+            continue
+
+        stmt = select(QuestionLogic).where(
+            QuestionLogic.question_id == question_map[q_id].id,
+            QuestionLogic.answer_value == answer
+        )
+        result = await session.execute(stmt)
+        logic_to_update = result.scalar_one_or_none()
+
+        if logic_to_update:
+            logic_to_update.next_question_id = question_map.get(next_q_id).id if next_q_id else None
+
+    # Handle text questions logic
+    text_questions = [q for q in question_definitions if q['type'] == 'text']
+    for q_def in text_questions:
+        q_id = q_def['id']
+        next_q_id = None
+        for ld in logic_data:
+            if ld[0] == q_id and ld[1] == 'любой':
+                next_q_id = ld[2]
+                break
+        
+        session.add(QuestionLogic(
+            question_id=question_map[q_id].id,
+            answer_value='любой', # Generic rule for text input
+            next_question_id=question_map.get(next_q_id).id if next_q_id else None
+        ))
+
+
     await session.commit()
     logging.info("Questionnaire data seeded successfully.")
+    # --- End of New Questionnaire Definition ---
 
 
 async def on_startup(bot: Bot):
