@@ -1,4 +1,4 @@
-print("---> RUNNING MAIN.PY VERSION 4 ---")
+print("---> RUNNING MAIN.PY VERSION 5 ---")
 import asyncio
 import logging
 import sys
@@ -75,11 +75,14 @@ async def init_db():
 
                 {'str_id': 'final_end', 'text': 'Спасибо за заполнение опросника. Мы проанализируем данные и свяжемся с вами.', 'type': 'text'},
             ]
+            
+            # --- DEBUG: Print the Question model columns ---
+            print(f"--- Question model attributes: {Question.__table__.columns.keys()} ---")
 
             # Create Question objects and map them
             question_map = {}
             for q_def in question_definitions:
-                options_json = json.dumps(q_def.get('options')) if q_def.get('options') else None
+                options_json = json.dumps(q_def.get('options'), ensure_ascii=False) if q_def.get('options') else None
                 q = Question(
                     questionnaire_id=main_questionnaire.id,
                     text=q_def['text'],
@@ -102,7 +105,7 @@ async def init_db():
             for logic_def in logic_definitions:
                 question_id = question_map[logic_def['q']].id
                 next_question_id = None
-                if logic_def.get('next_q'):
+                if logic_def.get('next_q') and logic_def.get('next_q') != 'конец опросника':
                     next_question_id = question_map[logic_def['next_q']].id
                 
                 session.add(QuestionLogic(
