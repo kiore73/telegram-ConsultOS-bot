@@ -26,21 +26,24 @@ async def get_question_keyboard(
         )
         answer_options = result.scalars().all()
         for option in answer_options:
-            callback_data = f"answer:{question.id}:{option.answer_value}"
+            # Use the ID of the logic rule for the callback, not the value, to avoid 64-byte limit
+            callback_data = f"answer_logic:{option.id}"
             buttons.append([InlineKeyboardButton(text=option.answer_value, callback_data=callback_data)])
             
     elif question.type == "multi":
         # For multi choice, get answers and mark selected ones
         result = await session.execute(
-            select(QuestionLogic).where(QuestionLogic.question_id == question.id)
+            select(QuestionLogic).where(QuestionLogic.question_id == question.id).where(QuestionLogic.answer_value != 'любой')
         )
         answer_options = result.scalars().all()
         for option in answer_options:
             text = option.answer_value
+            # The check for selected answers must now be based on the value, not the logic ID
             if text in selected_answers:
                 text = f"✅ {text}"
             
-            callback_data = f"multi_answer:{question.id}:{option.answer_value}"
+            # Use the ID of the logic rule for the callback
+            callback_data = f"multi_logic:{option.id}"
             buttons.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
         
         # Add "Done" button for multi-choice

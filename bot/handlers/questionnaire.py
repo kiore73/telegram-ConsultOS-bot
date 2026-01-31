@@ -101,18 +101,40 @@ async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("answer:"))
-async def answer_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    _, q_id_str, answer_value = cb.data.split(":", 2)
-    next_question_id = await process_answer(state, session, int(q_id_str), answer_value)
-    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, next_question_id)
+@router.callback_query(F.data.startswith("answer_logic:"))
+async def answer_logic_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    """ Handles a single-choice answer by the QuestionLogic ID. """
+    logic_id = int(cb.data.split(":")[1])
+    
+    # Fetch the logic rule to get all necessary info
+    result = await session.execute(select(QuestionLogic).where(QuestionLogic.id == logic_id))
+    logic = result.scalar_one_or_none()
+
+    if not logic:
+        await cb.answer("Ошибка: правило ответа не найдено.", show_alert=True)
+        return
+
+    # Now we have the question_id, answer_value, and next_question_id from the logic rule
+    await process_answer(state, session, logic.question_id, logic.answer_value)
+    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, logic.next_question_id)
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("multi_answer:"))
-async def multi_answer_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    _, q_id_str, answer_value = cb.data.split(":", 2)
-    question_id = int(q_id_str)
+@router.callback_query(F.data.startswith("multi_logic:"))
+async def multi_logic_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    """ Handles a multi-choice answer selection by the QuestionLogic ID. """
+    logic_id = int(cb.data.split(":")[1])
+    
+    # Fetch the logic rule to find out what was clicked
+    result = await session.execute(select(QuestionLogic).where(QuestionLogic.id == logic_id))
+    logic = result.scalar_one_or_none()
+
+    if not logic:
+        await cb.answer("Ошибка: правило ответа не найдено.", show_alert=True)
+        return
+        
+    question_id = logic.question_id
+    answer_value = logic.answer_value # The actual text of the answer
     
     current_data = await state.get_data()
     selected_key = f"multi_answers_{question_id}"
@@ -124,6 +146,7 @@ async def multi_answer_handler(cb: types.CallbackQuery, state: FSMContext, sessi
         selected_for_q.append(answer_value)
         
     await state.update_data({selected_key: selected_for_q})
+    # Re-show the same question with updated keyboard
     await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, session, question_id)
     await cb.answer()
 
