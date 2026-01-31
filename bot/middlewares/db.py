@@ -3,6 +3,8 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from ..services.questionnaire_service import questionnaire_service
+
 
 class DbSessionMiddleware(BaseMiddleware):
     def __init__(self, session_pool: async_sessionmaker):
@@ -17,4 +19,5 @@ class DbSessionMiddleware(BaseMiddleware):
     ) -> Any:
         async with self.session_pool() as session:
             data["session"] = session
+            data["questionnaire_service"] = questionnaire_service
             return await handler(event, data)

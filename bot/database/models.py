@@ -53,8 +53,8 @@ class Question(Base):
     questionnaire_id = Column(Integer, ForeignKey("questionnaires.id"), nullable=False)
     text = Column(String, nullable=False)
     type = Column(String, nullable=False)  # single, multi, text, photo
-    options = Column(String, nullable=True) # JSON-encoded list of options
     questionnaire = relationship("Questionnaire", back_populates="questions")
+    logic_rules = relationship("QuestionLogic", back_populates="question")
 
 
 Questionnaire.questions = relationship(
@@ -68,6 +68,7 @@ class QuestionLogic(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     answer_value = Column(String, nullable=False)
     next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=True) # Allow null
+    question = relationship("Question", back_populates="logic_rules")
 
 
 class Answer(Base):
