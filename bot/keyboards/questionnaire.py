@@ -19,7 +19,7 @@ def get_question_keyboard(
     
     if question.type == "single":
         for idx, option_text in enumerate(question.options):
-            callback_data = f"q_answer:{question.id}:{idx}"
+            callback_data = f"q{question.id}o{idx}"
             buttons.append([InlineKeyboardButton(text=option_text, callback_data=callback_data)])
             
     elif question.type == "multi":
@@ -28,17 +28,17 @@ def get_question_keyboard(
             if text in selected_answers:
                 text = f"✅ {text}"
             
-            callback_data = f"q_multi_select:{question.id}:{idx}"
+            callback_data = f"m{question.id}o{idx}" # Using 'm' for multi-select prefix
             buttons.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
         
         # Add "Done" button for multi-choice
-        buttons.append([InlineKeyboardButton(text="Готово", callback_data=f"multi_done:{question.id}")])
+        buttons.append([InlineKeyboardButton(text="Готово", callback_data=f"mdone{question.id}")])
 
     elif question.type == "photo":
         # Add a "Skip" button for optional photo questions
-        buttons.append([InlineKeyboardButton(text="Пропустить", callback_data=f"skip_question:{question.id}")])
+        buttons.append([InlineKeyboardButton(text="Пропустить", callback_data=f"skip{question.id}")])
 
     # Add a 'Back' button for all types
-    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_previous_question")])
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)

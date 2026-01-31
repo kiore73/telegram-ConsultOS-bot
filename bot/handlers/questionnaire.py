@@ -156,12 +156,18 @@ async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext
 
 # --- New, Simplified Handlers ---
 
-@router.callback_query(F.data.startswith("q_answer:"))
+@router.callback_query(F.data.startswith("q"))
 async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     """ Handles single-choice answers from the cached questionnaire. """
-    _, q_id_str, option_idx_str = cb.data.split(":", 2)
-    question_id = int(q_id_str)
-    option_index = int(option_idx_str)
+    # Expected format: "q{question_id}o{option_index}"
+    callback_data = cb.data
+    
+    q_id_start = callback_data.find('q') + 1
+    q_id_end = callback_data.find('o')
+    question_id = int(callback_data[q_id_start:q_id_end])
+    
+    option_idx_start = q_id_end + 1
+    option_index = int(callback_data[option_idx_start:])
     
     question = questionnaire_service.get_cache().get_question(question_id)
     answer_text = question.options[option_index]
@@ -171,12 +177,18 @@ async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questio
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("q_multi_select:"))
+@router.callback_query(F.data.startswith("m"))
 async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     """ Handles a multi-choice answer selection. """
-    _, q_id_str, option_idx_str = cb.data.split(":", 2)
-    question_id = int(q_id_str)
-    option_index = int(option_idx_str)
+    # Expected format: "m{question_id}o{option_index}"
+    callback_data = cb.data
+    
+    q_id_start = callback_data.find('m') + 1
+    q_id_end = callback_data.find('o')
+    question_id = int(callback_data[q_id_start:q_id_end])
+    
+    option_idx_start = q_id_end + 1
+    option_index = int(callback_data[option_idx_start:])
     
     question = questionnaire_service.get_cache().get_question(question_id)
     answer_text = question.options[option_index]
@@ -196,10 +208,10 @@ async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, q
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("multi_done:"))
+@router.callback_query(F.data.startswith("mdone"))
 async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    _, q_id_str = cb.data.split(":", 1)
-    question_id = int(q_id_str)
+    # Expected format: "mdone{question_id}"
+    question_id = int(cb.data.removeprefix("mdone"))
     
     current_data = await state.get_data()
     selected_answers = current_data.get(f"multi_answers_{question_id}", [])
@@ -227,10 +239,11 @@ async def photo_answer_handler(message: types.Message, state: FSMContext, questi
         await message.answer("Пожалуйста, ответьте на текущий вопрос или отправьте фото, если это требуется.")
 
 
-@router.callback_query(F.data.startswith("skip_question:"))
+@router.callback_query(F.data.startswith("skip"))
 async def skip_question_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    _, q_id_str = cb.data.split(":", 1)
-    next_question_id = await process_answer(state, questionnaire_service, int(q_id_str), "skipped")
+    # Expected format: "skip{question_id}"
+    question_id = int(cb.data.removeprefix("skip"))
+    next_question_id = await process_answer(state, questionnaire_service, question_id, "skipped")
     await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, next_question_id)
     await cb.answer()
 
@@ -251,18 +264,10 @@ async def text_answer_handler(message: types.Message, state: FSMContext, questio
         await message.answer("Пожалуйста, воспользуйтесь кнопками для ответа.")
 
 
-@router.callback_query(F.data == "back_to_previous_question")
+@router.callback_query(F.data == "back")
 async def back_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     current_data = await state.get_data()
     question_history = current_data.get("question_history", [])
     if not question_history:
         await cb.answer("Вы в самом начале, назад нельзя.", show_alert=True)
         return
-        
-    # Remove current question from history to get to the previous one
-    question_history.pop()
-    previous_question_id = question_history.pop() if question_history else questionnaire_service.get_cache().start_question_id
-    
-    await state.update_data(question_history=question_history)
-    await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, previous_question_id)
-    await cb.answer()
