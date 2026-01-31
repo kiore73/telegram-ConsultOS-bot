@@ -53,7 +53,7 @@ class Question(Base):
     questionnaire_id = Column(Integer, ForeignKey("questionnaires.id"), nullable=False)
     text = Column(String, nullable=False)
     type = Column(String, nullable=False)  # single, multi, text, photo
-    allow_photo = Column(Boolean, default=False)
+    options = Column(String, nullable=True) # JSON-encoded list of options
     questionnaire = relationship("Questionnaire", back_populates="questions")
 
 
