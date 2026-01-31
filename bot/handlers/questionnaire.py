@@ -151,8 +151,12 @@ async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext
 @router.callback_query(F.data.startswith("q_answer:"))
 async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     """ Handles single-choice answers from the cached questionnaire. """
-    _, q_id_str, answer_text = cb.data.split(":", 2)
+    _, q_id_str, option_idx_str = cb.data.split(":", 2)
     question_id = int(q_id_str)
+    option_index = int(option_idx_str)
+    
+    question = questionnaire_service.get_cache().get_question(question_id)
+    answer_text = question.options[option_index]
     
     next_question_id = await process_answer(state, questionnaire_service, question_id, answer_text)
     await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, next_question_id)
@@ -162,8 +166,12 @@ async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questio
 @router.callback_query(F.data.startswith("q_multi_select:"))
 async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     """ Handles a multi-choice answer selection. """
-    _, q_id_str, answer_text = cb.data.split(":", 2)
+    _, q_id_str, option_idx_str = cb.data.split(":", 2)
     question_id = int(q_id_str)
+    option_index = int(option_idx_str)
+    
+    question = questionnaire_service.get_cache().get_question(question_id)
+    answer_text = question.options[option_index]
     
     current_data = await state.get_data()
     selected_key = f"multi_answers_{question_id}"

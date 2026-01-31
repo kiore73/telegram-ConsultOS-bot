@@ -18,19 +18,17 @@ def get_question_keyboard(
     buttons = []
     
     if question.type == "single":
-        # For single choice, get answers from the pre-loaded options
-        for option_text in question.options:
-            callback_data = f"q_answer:{question.id}:{option_text}"
+        for idx, option_text in enumerate(question.options):
+            callback_data = f"q_answer:{question.id}:{idx}"
             buttons.append([InlineKeyboardButton(text=option_text, callback_data=callback_data)])
             
     elif question.type == "multi":
-        # For multi choice, get answers and mark selected ones
-        for option_text in question.options:
+        for idx, option_text in enumerate(question.options):
             text = option_text
             if text in selected_answers:
                 text = f"✅ {text}"
             
-            callback_data = f"q_multi_select:{question.id}:{option_text}"
+            callback_data = f"q_multi_select:{question.id}:{idx}"
             buttons.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
         
         # Add "Done" button for multi-choice
