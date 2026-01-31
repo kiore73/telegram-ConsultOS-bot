@@ -1,5 +1,5 @@
-# VERSION 10: Final, complete, and explicit logic for init_db
-print("---> RUNNING MAIN.PY VERSION 10 ---")
+# VERSION 11: Final, complete, and explicit logic for init_db
+print("---> RUNNING MAIN.PY VERSION 11 ---")
 import asyncio
 import logging
 import sys
