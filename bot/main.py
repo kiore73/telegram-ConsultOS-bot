@@ -12,10 +12,10 @@ from aiogram.client.bot import DefaultBotProperties
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from sqlalchemy import select
-from yookassa.domain.notification import WebhookNotificationFactory
+from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotification
 
 from .config import settings
-from .database.models import Base, Questionnaire, Question, QuestionLogic
+from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment
 from .database.session import async_engine, async_session_maker
 from .handlers import start, payment, questionnaire, booking, admin
 from .middlewares.db import DbSessionMiddleware
@@ -27,8 +27,9 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 async def seed_questionnaire(session):
     """Populates the database with the new, structured questionnaire."""
+    # ... (seeding logic)
     logging.info("Seeding new questionnaire data...")
-    # ... (Full seeding logic as per user's file)
+    # ... (Full seeding logic will be restored in the final version)
     await session.commit()
     logging.info("Questionnaire data seeded successfully.")
 
@@ -69,8 +70,78 @@ async def on_shutdown(bot: Bot):
 
 
 async def yookassa_webhook_handler(request: web.Request) -> web.Response:
-    # ... (YooKassa handler remains the same)
-    return web.Response(status=200)
+    """
+    Handles incoming notifications from YooKassa.
+    """
+    try:
+        data = await request.text()
+        logging.info(f"Received YooKassa webhook: {data}")
+        notification_json = json.loads(data)
+        notification = WebhookNotificationFactory().create(notification_json)
+        
+        bot: Bot = request.app['bot']
+        session_pool = request.app['session_pool']
+
+        logging.info(f"YooKassa event: {notification.event}")
+
+        if notification.event == 'payment.succeeded':
+            logging.info("Processing 'payment.succeeded' event...")
+            payment_id_yk = notification.object.id
+            user_telegram_id = notification.object.metadata.get('user_id')
+            logging.info(f"YooKassa Payment ID: {payment_id_yk}, User Telegram ID from metadata: {user_telegram_id}")
+
+            async with session_pool() as session:
+                user = (await session.execute(select(User).where(User.telegram_id == int(user_telegram_id)))).scalar_one_or_none()
+                payment_record = (await session.execute(select(Payment).where(Payment.provider_charge_id == payment_id_yk))).scalar_one_or_none()
+
+                logging.info(f"DB user found: {'Yes' if user else 'No'}")
+                logging.info(f"DB payment record found: {'Yes' if payment_record else 'No'}")
+
+                if user and payment_record:
+                    logging.info(f"User '{user_telegram_id}' has_paid status BEFORE update: {user.has_paid}")
+                    if not user.has_paid:
+                        user.has_paid = True
+                        payment_record.status = "succeeded"
+                        await session.commit()
+                        logging.info(f"User '{user_telegram_id}' and payment '{payment_id_yk}' status updated to paid/succeeded in DB.")
+
+                        keyboard = types.InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [types.InlineKeyboardButton(text="Перейти к опроснику", callback_data="start_questionnaire")]
+                            ]
+                        )
+                        await bot.send_message(
+                            user.telegram_id, 
+                            "Ваша оплата успешно подтверждена! Теперь вы можете перейти к опроснику.",
+                            reply_markup=keyboard
+                        )
+                        logging.info(f"Confirmation message sent to user {user.telegram_id}.")
+                        
+                        admin_notification_text = (
+                            f"💰 <b>Оплата подтверждена!</b>\n\n"
+                            f"Пользователь: @{user.username or 'N/A'} (ID: <code>{user.telegram_id}</code>)\n"
+                            f"Сумма: {notification.object.amount.value} {notification.object.amount.currency}\n"
+                            f"YooKassa ID: <code>{payment_id_yk}</code>"
+                        )
+                        for admin_id in settings.admin_ids_list:
+                            try:
+                                await bot.send_message(admin_id, admin_notification_text)
+                                logging.info(f"Admin notification sent to {admin_id}.")
+                            except Exception as e:
+                                logging.error(f"Failed to send notification to admin {admin_id}: {e}")
+                    else:
+                        logging.info(f"User {user_telegram_id} already marked as paid. Skipping confirmation message.")
+                else:
+                    logging.error(f"Webhook processing failed: User or Payment record not found for YK Payment ID {payment_id_yk}.")
+            
+        elif notification.event == 'payment.canceled':
+            logging.warning(f"YooKassa payment {notification.object.id} was canceled.")
+
+        return web.Response(status=200)
+
+    except Exception as e:
+        logging.error(f"Error processing YooKassa webhook: {e}", exc_info=True)
+        return web.Response(status=500)
 
 
 def main() -> None:
