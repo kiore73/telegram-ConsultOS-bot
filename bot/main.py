@@ -1,5 +1,5 @@
-# VERSION 6: Reverted to not use `options` field to work with cached model.
-print("---> RUNNING MAIN.PY VERSION 6 ---")
+# VERSION 7: Final explicit logic for init_db
+print("---> RUNNING MAIN.PY VERSION 7 ---")
 import asyncio
 import logging
 import sys
@@ -33,7 +33,7 @@ async def init_db():
 
     async with async_session_maker() as session:
         if (await session.execute(select(Questionnaire))).scalar_one_or_none() is None:
-            logging.info("Seeding new questionnaire data (compatibility mode)...")
+            logging.info("Seeding new questionnaire data (explicit logic mode)...")
             main_questionnaire = Questionnaire(title="Основной опросник")
             session.add(main_questionnaire)
             await session.flush()
@@ -71,7 +71,7 @@ async def init_db():
                 {'str_id': 'general_29', 'text': 'Испытываете ли вы трудности с запоминанием информации?', 'type': 'single'},
                 {'str_id': 'gkt_01', 'text': 'Испытываете ли вы болевые ощущения или дискомфорт в животе?', 'type': 'multi'},
                 {'str_id': 'gkt_02', 'text': 'Связаны ли боли с приемом пищи?', 'type': 'single'},
-                {'str_id': 'gkt_03', 'text': 'Бывает ли изжога, жжение за грудиной, отрыжка, нарушение глотания?', 'type': 'single'},
+                {'str_id': 'gkt_03', 'text': 'Беспокоят ли изжога, жжение за грудиной, отрыжка, нарушение глотания?', 'type': 'single'},
                 {'str_id': 'gkt_04', 'text': 'Бывает ли вздутие живота, метеоризм?', 'type': 'single'},
                 {'str_id': 'gkt_05', 'text': 'Оцените ваш аппетит', 'type': 'single'},
                 {'str_id': 'gkt_06', 'text': 'Какая регулярность стула?', 'type': 'single'},
@@ -123,35 +123,140 @@ async def init_db():
 
             question_map = {}
             for q_def in question_definitions:
-                q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'])
+                # Use allow_photo for photo type based on the old model, no options field
+                q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'], allow_photo=(q_def['type'] == 'photo'))
                 session.add(q)
                 question_map[q_def['str_id']] = q
             
             await session.flush()
 
+            # Explicitly define all logic to avoid duplicates
             logic_definitions = [
                 {'q': 'gender_selection', 'a': 'Мужской', 'next_q': 'general_01'},
-                {'q': 'gender_selection', 'a': 'Женский', 'next_q': 'female_01'}, # Both go to general
-                # The logic from here is simplified as all answers for a question go to the next one in sequence
-                # This is a workaround for the Docker cache issue
-            ]
-
-            # Simplified logic creation
-            for i in range(len(question_definitions) - 1):
-                current_q_str_id = question_definitions[i]['str_id']
-                next_q_str_id = question_definitions[i+1]['str_id']
+                {'q': 'gender_selection', 'a': 'Женский', 'next_q': 'female_01'},
                 
-                # Special branching
-                if current_q_str_id == 'gender_selection':
-                    logic_definitions.append({'q': 'gender_selection', 'a': 'Мужской', 'next_q': 'general_01'})
-                    logic_definitions.append({'q': 'gender_selection', 'a': 'Женский', 'next_q': 'female_01'})
-                elif current_q_str_id == 'general_29':
-                     logic_definitions.append({'q': 'general_29', 'a': 'да', 'next_q': 'nervous_01'})
-                     logic_definitions.append({'q': 'general_29', 'a': 'нет', 'next_q': 'gkt_01'})
-                # ... and so on for all other branches
-                else:
-                    logic_definitions.append({'q': current_q_str_id, 'a': 'любой', 'next_q': next_q_str_id})
+                # General Block
+                {'q': 'general_01', 'a': 'любой', 'next_q': 'general_02'},
+                {'q': 'general_02', 'a': 'да, регулярно', 'next_q': 'general_03'},
+                {'q': 'general_02', 'a': 'нерегулярно, время от времени', 'next_q': 'general_03'},
+                {'q': 'general_02', 'a': 'нет и не было', 'next_q': 'general_03'},
+                {'q': 'general_02', 'a': 'я профессиональный спортсмен', 'next_q': 'general_03'},
+                {'q': 'general_03', 'a': 'любой', 'next_q': 'general_04'},
+                {'q': 'general_04', 'a': 'любой', 'next_q': 'general_05'},
+                {'q': 'general_05', 'a': 'любой', 'next_q': 'general_06'},
+                {'q': 'general_06', 'a': 'любой', 'next_q': 'general_07'},
+                {'q': 'general_07', 'a': 'очень часто', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'иногда', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'сезонно', 'next_q': 'general_08'},
+                {'q': 'general_07', 'a': 'нет', 'next_q': 'general_08'},
+                {'q': 'general_08', 'a': 'очень редко', 'next_q': 'general_09'},
+                {'q': 'general_08', 'a': '1–2 раза в год', 'next_q': 'general_09'},
+                {'q': 'general_08', 'a': '3–4 раза в год', 'next_q': 'anemia_01'},
+                {'q': 'general_08', 'a': 'постоянно, даже летом', 'next_q': 'anemia_01'},
+                {'q': 'general_09', 'a': 'любой', 'next_q': 'general_10'},
+                {'q': 'general_10', 'a': 'любой', 'next_q': 'general_11'},
+                {'q': 'general_11', 'a': 'да, стараюсь придерживаться', 'next_q': 'general_12'},
+                {'q': 'general_11', 'a': 'да, но не получается соблюдать', 'next_q': 'general_12'},
+                {'q': 'general_11', 'a': 'нет, не знаком', 'next_q': 'general_12'},
+                {'q': 'general_12', 'a': 'любой', 'next_q': 'general_13'},
+                {'q': 'general_13', 'a': 'да, часто', 'next_q': 'nervous_01'},
+                {'q': 'general_13', 'a': 'иногда', 'next_q': 'nervous_01'},
+                {'q': 'general_13', 'a': 'нет', 'next_q': 'general_14'},
+                {'q': 'general_14', 'a': 'не знаю', 'next_q': 'general_15'},
+                {'q': 'general_14', 'a': 'повышенное / гипертония', 'next_q': 'general_15'},
+                {'q': 'general_14', 'a': 'пониженное', 'next_q': 'anemia_01'},
+                {'q': 'general_14', 'a': 'нестабильное', 'next_q': 'anemia_01'},
+                {'q': 'general_14', 'a': 'есть трекер', 'next_q': 'general_15'},
+                {'q': 'general_15', 'a': 'любой', 'next_q': 'general_16'},
+                {'q': 'general_16', 'a': 'да', 'next_q': 'general_17'},
+                {'q': 'general_16', 'a': 'иногда', 'next_q': 'general_17'},
+                {'q': 'general_16', 'a': 'нет', 'next_q': 'general_17'},
+                {'q': 'general_17', 'a': 'нет', 'next_q': 'general_18'},
+                {'q': 'general_17', 'a': 'часто', 'next_q': 'general_18'},
+                {'q': 'general_17', 'a': 'иногда', 'next_q': 'general_18'},
+                {'q': 'general_18', 'a': 'любой', 'next_q': 'general_19'},
+                {'q': 'general_19', 'a': 'да, всё хорошо', 'next_q': 'general_20'},
+                {'q': 'general_19', 'a': 'есть проблемы с кожей', 'next_q': 'skin_01'},
+                {'q': 'general_19', 'a': 'не устраивает состояние волос / ногтей', 'next_q': 'anemia_01'},
+                {'q': 'general_20', 'a': 'любой', 'next_q': 'general_21'},
+                {'q': 'general_21', 'a': 'любой', 'next_q': 'general_22'},
+                {'q': 'general_22', 'a': 'любой', 'next_q': 'general_23'},
+                {'q': 'general_23', 'a': 'нет', 'next_q': 'general_24'},
+                {'q': 'general_23', 'a': 'любой', 'next_q': 'nervous_01'},
+                {'q': 'general_24', 'a': 'любой', 'next_q': 'general_25'}, # Simplified range
+                {'q': 'general_25', 'a': 'да', 'next_q': 'oda_01'},
+                {'q': 'general_25', 'a': 'любой', 'next_q': 'general_26'},
+                {'q': 'general_26', 'a': 'любой', 'next_q': 'general_27'},
+                {'q': 'general_27', 'a': 'любой', 'next_q': 'general_28'},
+                {'q': 'general_28', 'a': 'любой', 'next_q': 'general_29'},
+                {'q': 'general_29', 'a': 'да', 'next_q': 'nervous_01'},
+                {'q': 'general_29', 'a': 'нет', 'next_q': 'gkt_01'},
+                
+                # GKT Block
+                {'q': 'gkt_01', 'a': 'нет', 'next_q': 'gkt_03'},
+                {'q': 'gkt_01', 'a': 'любой', 'next_q': 'gkt_02'},
+                {'q': 'gkt_02', 'a': 'любой', 'next_q': 'gkt_03'},
+                {'q': 'gkt_03', 'a': 'любой', 'next_q': 'gkt_04'},
+                {'q': 'gkt_04', 'a': 'любой', 'next_q': 'gkt_05'},
+                {'q': 'gkt_05', 'a': 'любой', 'next_q': 'gkt_06'},
+                {'q': 'gkt_06', 'a': 'любой', 'next_q': 'gkt_07'},
+                {'q': 'gkt_07', 'a': 'любой', 'next_q': 'gkt_08'},
+                {'q': 'gkt_08', 'a': 'любой', 'next_q': 'gkt_09'},
+                {'q': 'gkt_09', 'a': 'любой', 'next_q': 'gkt_10'},
+                {'q': 'gkt_10', 'a': 'любой', 'next_q': 'gkt_11'},
+                {'q': 'gkt_11', 'a': 'любой', 'next_q': 'skin_01'},
 
+                # Skin Block
+                {'q': 'skin_01', 'a': 'любой', 'next_q': 'skin_02'},
+                {'q': 'skin_02', 'a': 'любой', 'next_q': 'nervous_01'},
+
+                # Nervous Block
+                {'q': 'nervous_01', 'a': 'любой', 'next_q': 'nervous_02'},
+                {'q': 'nervous_02', 'a': 'любой', 'next_q': 'nervous_03'},
+                {'q': 'nervous_03', 'a': 'любой', 'next_q': 'nervous_04'},
+                {'q': 'nervous_04', 'a': 'любой', 'next_q': 'nervous_05'},
+                {'q': 'nervous_05', 'a': 'любой', 'next_q': 'nervous_06'},
+                {'q': 'nervous_06', 'a': 'любой', 'next_q': 'nervous_07'},
+                {'q': 'nervous_07', 'a': 'любой', 'next_q': 'nervous_08'},
+                {'q': 'nervous_08', 'a': 'любой', 'next_q': 'anemia_01'},
+
+                # Anemia Block
+                {'q': 'anemia_01', 'a': 'любой', 'next_q': 'anemia_02'},
+                {'q': 'anemia_02', 'a': 'любой', 'next_q': 'anemia_03'},
+                {'q': 'anemia_03', 'a': 'любой', 'next_q': 'anemia_04'},
+                {'q': 'anemia_04', 'a': 'любой', 'next_q': 'anemia_05'},
+                {'q': 'anemia_05', 'a': 'любой', 'next_q': 'anemia_06'},
+                {'q': 'anemia_06', 'a': 'любой', 'next_q': 'anemia_07'},
+                {'q': 'anemia_07', 'a': 'любой', 'next_q': 'anemia_08'},
+                {'q': 'anemia_08', 'a': 'любой', 'next_q': 'oda_01'},
+
+                # Female Block
+                {'q': 'female_01', 'a': 'любой', 'next_q': 'female_02'},
+                {'q': 'female_02', 'a': 'любой', 'next_q': 'female_03'},
+                {'q': 'female_03', 'a': 'любой', 'next_q': 'female_04'},
+                {'q': 'female_04', 'a': 'любой', 'next_q': 'female_05'},
+                {'q': 'female_05', 'a': 'любой', 'next_q': 'female_06'},
+                {'q': 'female_06', 'a': 'любой', 'next_q': 'female_07'},
+                {'q': 'female_07', 'a': 'любой', 'next_q': 'female_08'},
+                {'q': 'female_08', 'a': 'любой', 'next_q': 'female_09'},
+                {'q': 'female_09', 'a': 'любой', 'next_q': 'female_10'},
+                {'q': 'female_10', 'a': 'любой', 'next_q': 'female_11'},
+                {'q': 'female_11', 'a': 'любой', 'next_q': 'female_12'},
+                {'q': 'female_12', 'a': 'любой', 'next_q': 'female_13'},
+                {'q': 'female_13', 'a': 'любой', 'next_q': 'oda_01'},
+                
+                # ODA Block
+                {'q': 'oda_01', 'a': 'любой', 'next_q': 'oda_02'},
+                {'q': 'oda_02', 'a': 'любой', 'next_q': 'oda_03'},
+                {'q': 'oda_03', 'a': 'любой', 'next_q': 'oda_04'},
+                {'q': 'oda_04', 'a': 'любой', 'next_q': 'oda_05'},
+                {'q': 'oda_05', 'a': 'любой', 'next_q': 'oda_06'},
+                {'q': 'oda_06', 'a': 'любой', 'next_q': 'oda_07'},
+                {'q': 'oda_07', 'a': 'любой', 'next_q': 'final_end'},
+
+                # Final
+                {'q': 'final_end', 'a': 'любой', 'next_q': None},
+            ]
 
             for logic_def in logic_definitions:
                 question_id = question_map[logic_def['q']].id
@@ -159,11 +264,19 @@ async def init_db():
                 if logic_def.get('next_q'):
                     next_question_id = question_map[logic_def['next_q']].id
                 
-                session.add(QuestionLogic(
-                    question_id=question_id,
-                    answer_value=logic_def['a'],
-                    next_question_id=next_question_id
-                ))
+                # Ensure no duplicates for a given question_id + answer_value
+                existing_logic = await session.execute(
+                    select(QuestionLogic).where(
+                        QuestionLogic.question_id == question_id,
+                        QuestionLogic.answer_value == logic_def['a']
+                    )
+                )
+                if existing_logic.scalar_one_or_none() is None:
+                    session.add(QuestionLogic(
+                        question_id=question_id,
+                        answer_value=logic_def['a'],
+                        next_question_id=next_question_id
+                    ))
 
             await session.commit()
             logging.info("Questionnaire data seeded successfully (compat mode).")
@@ -234,7 +347,8 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                         # Notify admins
                         admin_notification_text = (
                             f"💰 \u003cb\u003eНОВОЕ УВЕДОМЛЕНИЕ ОТ ЮKASSA: Оплата подтверждена!\u003c/b\u003e\n\n"
-                            f"Пользователь: {user.username or 'N/A'} (ID: \u003ccode\u003e{user.telegram_id}\u003c/code\u003e)\n"
+                            f"Пользователь: {user.username or 'N/A'} (ID: \u003ccode\u003e{user.telegram_id}\u003c/code\u003e)
+"
                             f"Сумма: {notification.object.amount.value} {notification.object.amount.currency}\n"
                             f"YooKassa Payment ID: \u003ccode\u003e{payment_id_yk}\u003c/code\u003e"
                         )
