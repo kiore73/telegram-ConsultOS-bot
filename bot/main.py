@@ -1,5 +1,5 @@
-# VERSION 7: Final explicit logic for init_db
-print("---> RUNNING MAIN.PY VERSION 7 ---")
+# VERSION 8: Final explicit logic for init_db and SyntaxError fix
+print("---> RUNNING MAIN.PY VERSION 8 ---")
 import asyncio
 import logging
 import sys
@@ -123,14 +123,12 @@ async def init_db():
 
             question_map = {}
             for q_def in question_definitions:
-                # Use allow_photo for photo type based on the old model, no options field
                 q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'], allow_photo=(q_def['type'] == 'photo'))
                 session.add(q)
                 question_map[q_def['str_id']] = q
             
             await session.flush()
 
-            # Explicitly define all logic to avoid duplicates
             logic_definitions = [
                 {'q': 'gender_selection', 'a': 'Мужской', 'next_q': 'general_01'},
                 {'q': 'gender_selection', 'a': 'Женский', 'next_q': 'female_01'},
@@ -347,8 +345,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                         # Notify admins
                         admin_notification_text = (
                             f"💰 \u003cb\u003eНОВОЕ УВЕДОМЛЕНИЕ ОТ ЮKASSA: Оплата подтверждена!\u003c/b\u003e\n\n"
-                            f"Пользователь: {user.username or 'N/A'} (ID: \u003ccode\u003e{user.telegram_id}\u003c/code\u003e)
-"
+                            f"Пользователь: {user.username or 'N/A'} (ID: \u003ccode\u003e{user.telegram_id}\u003c/code\u003e))\n"
                             f"Сумма: {notification.object.amount.value} {notification.object.amount.currency}\n"
                             f"YooKassa Payment ID: \u003ccode\u003e{payment_id_yk}\u003c/code\u003e"
                         )
