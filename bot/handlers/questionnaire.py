@@ -32,8 +32,8 @@ async def show_question(
         await state.clear()
         return
 
-    # A simple way to detect the final "thank you" slide
-    if not question.options and question.type == 'text':
+    # New, robust way to detect the final "thank you" slide
+    if question.type == 'final':
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
         await bot.edit_message_text(
@@ -65,6 +65,10 @@ async def process_answer(state: FSMContext, questionnaire_service: Questionnaire
     q_cache = questionnaire_service.get_cache()
     question = q_cache.get_question(question_id)
     
+    # Robustly find and store the gender question's ID when it's answered
+    if "Укажите ваш пол" in question.text:
+        await state.update_data(gender_question_id=question_id)
+
     logic_answer_value = answer_value
     if question.type == 'multi':
         answers[str(question_id)] = json.dumps(answer_value, ensure_ascii=False)
@@ -90,11 +94,34 @@ async def go_to_next_question(
     session: AsyncSession,
     next_question_id: int
 ):
-    """ Transitions to the next question or ends the questionnaire. """
+    """ 
+    Transitions to the next question or ends the questionnaire.
+    Handles internal branching nodes.
+    """
+    q_cache = questionnaire_service.get_cache()
+    
+    # Handle internal branching node for gender
+    if next_question_id and q_cache.get_question(next_question_id).type == 'internal':
+        current_data = await state.get_data()
+        answers = current_data.get("answers", {})
+        
+        # Robustly get the gender question's ID from the state
+        gender_q_id = current_data.get("gender_question_id")
+        
+        gender_answer = answers.get(str(gender_q_id)) if gender_q_id else None
+        
+        # Determine the next step based on gender
+        final_next_id = q_cache.get_next_question_id(next_question_id, gender_answer)
+        logging.info(f"Internal branch: gender_answer='{gender_answer}', redirecting to QID {final_next_id}")
+
+        # Recursively call itself to proceed to the correct next question
+        await go_to_next_question(bot, chat_id, message_id, state, questionnaire_service, session, final_next_id)
+        return
+
     if next_question_id:
         await show_question(bot, chat_id, message_id, state, questionnaire_service, session, next_question_id)
     else:
-        # Final thank you slide or end of questionnaire
+        # End of questionnaire, transition to booking
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
         await bot.edit_message_text(
@@ -116,33 +143,6 @@ async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext
         await cb.message.edit_text("Опросник еще не настроен.")
     await cb.answer()
 
-
-@router.callback_query(F.data.startswith("answer_logic:"))
-async def answer_logic_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    """ Handles a single-choice answer. Fetches logic from cache. """
-    logic_id = int(cb.data.split(":")[1])
-    
-    # This handler is now simplified as we don't need to query the DB
-    # The logic for finding the next question is handled by the service
-    current_data = await state.get_data()
-    question_id = current_data.get("current_question_id")
-    
-    # This part needs to be re-thought. The logic ID is not enough.
-    # The keyboard needs to pass the answer value itself.
-    # Reverting to a simpler callback data temporarily.
-    # This will be fixed by refactoring the keyboard next.
-    # For now, let's assume callback_data is "answer:question_id:answer_text"
-    
-    # THIS HANDLER IS NOW DEPRECATED and will be replaced by a simpler one
-    # that uses the questionnaire_service fully.
-    pass # To be removed
-
-
-@router.callback_query(F.data.startswith("multi_logic:"))
-async def multi_logic_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    """ Handles a multi-choice answer selection. """
-    # THIS HANDLER IS NOW DEPRECATED
-    pass # To be removed
 
 # --- New, Simplified Handlers ---
 
