@@ -79,9 +79,8 @@ class QuestionnaireService:
         self._cache.start_question_id = all_questions[0].id if all_questions else None
 
         for q in all_questions:
-            # Reconstruct options for CachedQuestion from logic_rules if needed
-            # For this new robust service, let's collect actual options from logic_rules
-            options = [logic.answer_value for logic in q.logic_rules if logic.answer_value != "любой"]
+            # Options are now correctly loaded from the JSON field in the DB
+            options = q.options if q.options else []
             self._cache.questions[q.id] = CachedQuestion(
                 id=q.id, text=q.text, q_type=q.type, options=options
             )

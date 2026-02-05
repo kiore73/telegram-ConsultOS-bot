@@ -114,7 +114,13 @@ async def seed_questionnaire(session):
     # Create map for easier lookup and add to session
     question_db_map = {}
     for q_def in question_definitions:
-        q = Question(questionnaire_id=main_questionnaire.id, text=q_def['text'], type=q_def['type'])
+        options = options_data.get(q_def['id'])
+        q = Question(
+            questionnaire_id=main_questionnaire.id,
+            text=q_def['text'],
+            type=q_def['type'],
+            options=options,
+        )
         session.add(q)
         question_db_map[q_def['id']] = q
     await session.flush() # Flush to get IDs

@@ -11,6 +11,7 @@ from sqlalchemy import (
     Date,
     Time,
     ForeignKey,
+    JSON,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -53,6 +54,7 @@ class Question(Base):
     questionnaire_id = Column(Integer, ForeignKey("questionnaires.id"), nullable=False)
     text = Column(String, nullable=False)
     type = Column(String, nullable=False)  # single, multi, text, photo
+    options = Column(JSON, nullable=True)
     questionnaire = relationship("Questionnaire", back_populates="questions")
     logic_rules = relationship("QuestionLogic", back_populates="question", foreign_keys="[QuestionLogic.question_id]")
 
