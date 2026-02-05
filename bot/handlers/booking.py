@@ -10,6 +10,7 @@ from ..states.questionnaire import QuestionnaireFSM # Import QuestionnaireFSM to
 from ..config import settings
 from ..database.models import TimeSlot, Booking, User, Question # Added Question
 from ..keyboards.booking import get_time_keyboard, get_calendar_keyboard
+from ..services.questionnaire_service import questionnaire_service, QuestionnaireService
 
 router = Router()
 
@@ -34,7 +35,12 @@ async def select_date_handler(callback_query: types.CallbackQuery, state: FSMCon
 
 
 @router.callback_query(BookingFSM.TIME_SELECT, F.data.startswith("select_time:"))
-async def select_time_handler(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+async def select_time_handler(
+    callback_query: types.CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    questionnaire_service: QuestionnaireService,
+):
     """
     Handles time slot selection and confirms the booking.
     """
@@ -62,9 +68,10 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
         fsm_data = await state.get_data()
         questionnaire_answers = fsm_data.get("answers", {})
 
-        # Fetch all questions to format answers correctly
-        all_questions = (await session.execute(select(Question))).scalars().all()
-        questions_map = {q.id: q for q in all_questions}
+        # Fetch all questions from the cache to format answers correctly
+        questions_map = {
+            q.id: q for q in questionnaire_service.get_cache().questions.values()
+        }
 
         formatted_answers_list = []
         photo_file_ids_to_send = []
@@ -92,7 +99,6 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
         
         formatted_answers = "\n".join(formatted_answers_list)
 
-        await state.clear() # Clear state after successful booking
         await callback_query.message.edit_text(
             f"Отлично! Вы успешно записаны на {slot.date.strftime('%d %B %Y')} в {slot.time.strftime('%H:%M')}.\n\n"
             "В ближайшее время с вами свяжется администратор."
@@ -116,6 +122,7 @@ async def select_time_handler(callback_query: types.CallbackQuery, state: FSMCon
                 import logging
                 logging.error(f"Failed to send booking notification to admin {admin_id}: {e}")
 
+        await state.clear() # Clear state after successful booking and notification
     else:
         await callback_query.message.edit_text("К сожалению, этот слот уже занят. Пожалуйста, выберите другой.")
         # Reshow the calendar
