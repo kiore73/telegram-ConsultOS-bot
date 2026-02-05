@@ -98,35 +98,9 @@ async def go_to_next_question(
 ):
     """ 
     Transitions to the next question or ends the questionnaire.
-    Handles gender-based branching logic.
     """
     logging.debug(f"go_to_next_question called with next_question_id: {next_question_id}")
-    q_cache = questionnaire_service.get_cache()
     
-    # Check for gender-based branching before showing the question
-    if next_question_id:
-        next_question = q_cache.get_question(next_question_id)
-        # If the next question is the start of the women's branch
-        if next_question and "возраст начала первой менструации" in next_question.text:
-            logging.debug(f"go_to_next_question: Detected women's branch start (QID {next_question_id}).")
-            current_data = await state.get_data()
-            answers = current_data.get("answers", {})
-            gender_q_id = str(current_data.get("gender_question_id"))
-            
-            if gender_q_id and answers.get(gender_q_id) == "Мужчина":
-                logging.info("User is male, skipping women's branch and ending survey.")
-                # Find the end question and jump to it
-                end_q_id = None
-                for qid, q in q_cache.questions.items():
-                    if q.type == 'final':
-                        end_q_id = qid
-                        break
-                logging.debug(f"go_to_next_question: Redirecting male user to final QID: {end_q_id}")
-                await go_to_next_question(bot, chat_id, message_id, state, questionnaire_service, session, end_q_id)
-                return
-            else:
-                logging.debug(f"go_to_next_question: User is female or gender not specified, proceeding to women's branch.")
-
     if next_question_id:
         await show_question(bot, chat_id, message_id, state, questionnaire_service, session, next_question_id)
     else:

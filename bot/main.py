@@ -46,9 +46,9 @@ async def seed_questionnaire(session):
         'q_muscle_symptoms': ['Нет', 'Судороги ног ночью', 'Спазмы мышц шеи', 'Судороги или спазмы регулярно', 'Онемение конечностей'],
         'q_dizziness': ['Да, часто', 'Иногда', 'Нет'],
         'q_pressure': ['Не знаю', 'Повышенное / гипертония', 'Пониженное', 'Нестабильное', 'Есть трекер'],
-        'q_edema': ['Нет', 'Постоянно', 'Летом', 'В области ног', 'Лицо и руки'],
+        'q_edema': ['Нет', 'Постоянно', 'Летом', 'отекают ноги/лодыжки', 'Лицо и руки'],
         'q_urination': ['Да', 'Иногда', 'Нет'],
-        'q_veins': ['Нет', 'Иногда', 'Часто'],
+        'q_veins': ['Нет', 'беспокоит тяжесть', 'Часто'],
         'q_water': ['Пью достаточно воды', 'Воду не люблю, пью другие напитки', 'Забываю пить, часто жажда', 'Не чувствую жажды', 'Пью много, жажда не утоляется'],
         'q_gut_pain': ['В верхней части живота (эпигастрий)', 'В области пупка', 'Внизу живота', 'Больше справа', 'Больше слева или в области спины', 'Нет'],
         'q_gut_pain_relation': ['Сразу после еды', 'В течение 1–2 часов', 'Связаны с голодом', 'Не связаны', 'Бывает по-разному'],
@@ -196,7 +196,7 @@ async def seed_questionnaire(session):
     logic_rules_definitions = [
         # Main Flow (Common questions for both genders first)
         {'from': 'q_gender', 'answer': 'Мужчина', 'to': 'q_occupation'},
-        {'from': 'q_gender', 'answer': 'Женщина', 'to': 'q_occupation'},
+        {'from': 'q_gender', 'answer': 'Женщина', 'to': 'q_women_menarche'},
         {'from': 'q_occupation', 'answer': 'любой', 'to': 'q_sport_activity'}, # 'любой' for multi-choice
         {'from': 'q_sport_activity', 'answer': 'любой', 'to': 'q_chronic_diseases'},
         {'from': 'q_chronic_diseases', 'answer': 'любой', 'to': 'q_family_diseases'}, # 'любой' for text
@@ -281,7 +281,7 @@ async def seed_questionnaire(session):
         {'from': 'q_women_cystitis', 'answer': 'любой', 'to': 'q_women_candidiasis'},
         {'from': 'q_women_candidiasis', 'answer': 'любой', 'to': 'q_women_cosmetics_amount'},
         {'from': 'q_women_cosmetics_amount', 'answer': 'любой', 'to': 'q_women_ecology'},
-        {'from': 'q_women_ecology', 'answer': 'любой', 'to': 'q_survey_end'}, # End of women's branch
+        {'from': 'q_women_ecology', 'answer': 'любой', 'to': 'q_occupation'}, # End of women's branch
     ]
 
     # 4. Create QuestionLogic entries
