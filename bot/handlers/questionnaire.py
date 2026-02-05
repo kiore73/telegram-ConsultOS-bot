@@ -177,6 +177,19 @@ async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questio
     await cb.answer()
 
 
+@router.callback_query(F.data.startswith("mdone"))
+async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
+    # Expected format: "mdone{question_id}"
+    question_id = int(cb.data.removeprefix("mdone"))
+    
+    current_data = await state.get_data()
+    selected_answers = current_data.get(f"multi_answers_{question_id}", [])
+    
+    next_question_id = await process_answer(state, questionnaire_service, question_id, selected_answers)
+    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, next_question_id)
+    await cb.answer()
+
+
 @router.callback_query(F.data.startswith("m"))
 async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     """ Handles a multi-choice answer selection. """
@@ -205,19 +218,6 @@ async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, q
     await state.update_data({selected_key: selected_for_q})
     # Re-show the same question with updated keyboard
     await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, question_id)
-    await cb.answer()
-
-
-@router.callback_query(F.data.startswith("mdone"))
-async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    # Expected format: "mdone{question_id}"
-    question_id = int(cb.data.removeprefix("mdone"))
-    
-    current_data = await state.get_data()
-    selected_answers = current_data.get(f"multi_answers_{question_id}", [])
-    
-    next_question_id = await process_answer(state, questionnaire_service, question_id, selected_answers)
-    await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, next_question_id)
     await cb.answer()
 
 
