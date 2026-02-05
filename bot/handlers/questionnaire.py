@@ -242,6 +242,38 @@ async def text_answer_handler(message: types.Message, state: FSMContext, questio
 async def back_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
     current_data = await state.get_data()
     question_history = current_data.get("question_history", [])
+
     if not question_history:
         await cb.answer("Вы в самом начале, назад нельзя.", show_alert=True)
         return
+
+    # The last question in the history is the one we want to go *back* to.
+    previous_q_id = question_history.pop()
+    
+    # Get all the data, we will modify it and set it back
+    data_to_update = await state.get_data()
+    
+    # Update the history in our local copy
+    data_to_update['question_history'] = question_history
+
+    # Remove the answer for the question we are returning to
+    if 'answers' in data_to_update:
+        data_to_update['answers'].pop(str(previous_q_id), None)
+    
+    # Also remove any temporary selections for it if it was a multi-select
+    data_to_update.pop(f"multi_answers_{previous_q_id}", None)
+
+    # Set the modified data back into the state
+    await state.set_data(data_to_update)
+
+    # Show the previous question
+    await show_question(
+        bot=cb.bot,
+        chat_id=cb.from_user.id,
+        message_id=cb.message.message_id,
+        state=state,
+        questionnaire_service=questionnaire_service,
+        session=session,
+        question_id=previous_q_id,
+    )
+    await cb.answer()
