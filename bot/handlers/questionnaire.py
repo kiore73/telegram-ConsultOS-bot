@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..states.questionnaire import QuestionnaireFSM
 from ..states.booking import BookingFSM
-from ..services.questionnaire_service import QuestionnaireService
+from ..services.questionnaire_service import QuestionnaireService, questionnaire_service
 from ..keyboards.questionnaire import get_question_keyboard
 from ..keyboards.booking import get_calendar_keyboard
 
@@ -20,11 +20,19 @@ async def show_question(
     message_id: int, 
     state: FSMContext, 
     questionnaire_service: QuestionnaireService, 
-    session: AsyncSession, # Keep session for calendar keyboard
+    session: AsyncSession,
     question_id: int
 ):
     """ Helper function to display a question using the cache. """
-    q_cache = questionnaire_service.get_cache()
+    data = await state.get_data()
+    tariff_title = data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+    
+    if not q_cache:
+        await bot.send_message(chat_id, f"Опросник для тарифа '{tariff_title}' не найден.")
+        await state.clear()
+        return
+
     question = q_cache.get_question(question_id)
 
     if not question:
@@ -32,7 +40,6 @@ async def show_question(
         await state.clear()
         return
 
-    # New, robust way to detect the final "thank you" slide
     if question.type == 'final':
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
@@ -46,7 +53,6 @@ async def show_question(
     current_data = await state.get_data()
     selected_answers = current_data.get(f"multi_answers_{question_id}", [])
     
-    # Keyboard generation now uses cached data, no session needed
     keyboard = get_question_keyboard(question, selected_answers)
     
     await bot.edit_message_text(
@@ -62,17 +68,18 @@ async def process_answer(state: FSMContext, questionnaire_service: Questionnaire
     current_data = await state.get_data()
     answers = current_data.get("answers", {})
     
-    q_cache = questionnaire_service.get_cache()
+    tariff_title = current_data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+    
     question = q_cache.get_question(question_id)
     
-    # Robustly find and store the gender question's ID when it's answered
     if "Укажите ваш пол" in question.text:
         await state.update_data(gender_question_id=question_id)
 
     logic_answer_value = answer_value
     if question.type == 'multi':
         answers[str(question_id)] = json.dumps(answer_value, ensure_ascii=False)
-        logic_answer_value = "любой" # Branching for multi is generic
+        logic_answer_value = "любой"
     else:
         answers[str(question_id)] = answer_value
 
@@ -83,7 +90,6 @@ async def process_answer(state: FSMContext, questionnaire_service: Questionnaire
     await state.update_data(answers=answers, question_history=question_history)
     
     next_q_id = q_cache.get_next_question_id(question_id, logic_answer_value)
-    logging.debug(f"process_answer: QID {question_id}, Answer '{logic_answer_value}' -> Next QID: {next_q_id}")
     return next_q_id
 
 
@@ -96,16 +102,10 @@ async def go_to_next_question(
     session: AsyncSession,
     next_question_id: int
 ):
-    """ 
-    Transitions to the next question or ends the questionnaire.
-    """
-    logging.debug(f"go_to_next_question called with next_question_id: {next_question_id}")
-    
+    """ Transitions to the next question or ends the questionnaire. """
     if next_question_id:
         await show_question(bot, chat_id, message_id, state, questionnaire_service, session, next_question_id)
     else:
-        logging.info("go_to_next_question: No further next_question_id, ending questionnaire.")
-        # End of questionnaire, transition to booking
         await state.set_state(BookingFSM.DATE_SELECT)
         calendar_keyboard = await get_calendar_keyboard(session)
         await bot.edit_message_text(
@@ -115,25 +115,36 @@ async def go_to_next_question(
         )
 
 
-@router.callback_query(F.data == "start_questionnaire")
+@router.callback_query(F.data.startswith("start_questionnaire:"))
 async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
-    await state.update_data(question_history=[], answers={})
+    tariff = cb.data.split(":")[1]
     
-    start_question_id = questionnaire_service.get_cache().start_question_id
-    if start_question_id:
-        await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, start_question_id)
+    # Map tariff name to questionnaire title
+    # For now, only 'basic' is implemented
+    if tariff == 'basic':
+        questionnaire_title = "Основной опросник"
     else:
-        await cb.message.edit_text("Опросник еще не настроен.")
+        # Placeholder for other tariffs
+        await cb.message.edit_text(f"Опросник для тарифа '{tariff}' еще не готов.")
+        await cb.answer()
+        return
+
+    q_cache = questionnaire_service.get_questionnaire_by_title(questionnaire_title)
+    
+    if not q_cache or not q_cache.start_question_id:
+        await cb.message.edit_text("Опросник не найден или не настроен.")
+        await cb.answer()
+        return
+
+    await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
+    await state.update_data(question_history=[], answers={}, tariff_title=questionnaire_title)
+    
+    await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, q_cache.start_question_id)
     await cb.answer()
 
 
-# --- New, Simplified Handlers ---
-
 @router.callback_query(F.data.startswith("q"))
 async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    """ Handles single-choice answers from the cached questionnaire. """
-    # Expected format: "q{question_id}o{option_index}"
     callback_data = cb.data
     
     q_id_start = callback_data.find('q') + 1
@@ -143,7 +154,11 @@ async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questio
     option_idx_start = q_id_end + 1
     option_index = int(callback_data[option_idx_start:])
     
-    question = questionnaire_service.get_cache().get_question(question_id)
+    data = await state.get_data()
+    tariff_title = data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+    
+    question = q_cache.get_question(question_id)
     answer_text = question.options[option_index]
     
     next_question_id = await process_answer(state, questionnaire_service, question_id, answer_text)
@@ -153,7 +168,6 @@ async def new_answer_handler(cb: types.CallbackQuery, state: FSMContext, questio
 
 @router.callback_query(F.data.startswith("mdone"))
 async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    # Expected format: "mdone{question_id}"
     question_id = int(cb.data.removeprefix("mdone"))
     
     current_data = await state.get_data()
@@ -166,8 +180,6 @@ async def multi_done_handler(cb: types.CallbackQuery, state: FSMContext, questio
 
 @router.callback_query(F.data.startswith("m"))
 async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    """ Handles a multi-choice answer selection. """
-    # Expected format: "m{question_id}o{option_index}"
     callback_data = cb.data
     
     q_id_start = callback_data.find('m') + 1
@@ -177,7 +189,11 @@ async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, q
     option_idx_start = q_id_end + 1
     option_index = int(callback_data[option_idx_start:])
     
-    question = questionnaire_service.get_cache().get_question(question_id)
+    data = await state.get_data()
+    tariff_title = data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+    
+    question = q_cache.get_question(question_id)
     answer_text = question.options[option_index]
     
     current_data = await state.get_data()
@@ -190,7 +206,6 @@ async def new_multi_select_handler(cb: types.CallbackQuery, state: FSMContext, q
         selected_for_q.append(answer_text)
         
     await state.update_data({selected_key: selected_for_q})
-    # Re-show the same question with updated keyboard
     await show_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, question_id)
     await cb.answer()
 
@@ -200,7 +215,11 @@ async def photo_answer_handler(message: types.Message, state: FSMContext, questi
     current_data = await state.get_data()
     question_id = current_data.get("current_question_id")
     
-    question = questionnaire_service.get_cache().get_question(question_id)
+    data = await state.get_data()
+    tariff_title = data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+    
+    question = q_cache.get_question(question_id)
 
     if question and question.type == 'photo':
         photo_file_id = message.photo[-1].file_id
@@ -215,7 +234,6 @@ async def photo_answer_handler(message: types.Message, state: FSMContext, questi
 
 @router.callback_query(F.data.startswith("skip"))
 async def skip_question_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    # Expected format: "skip{question_id}"
     question_id = int(cb.data.removeprefix("skip"))
     next_question_id = await process_answer(state, questionnaire_service, question_id, "skipped")
     await go_to_next_question(cb.bot, cb.from_user.id, cb.message.message_id, state, questionnaire_service, session, next_question_id)
@@ -227,7 +245,11 @@ async def text_answer_handler(message: types.Message, state: FSMContext, questio
     current_data = await state.get_data()
     question_id = current_data.get("current_question_id")
 
-    question = questionnaire_service.get_cache().get_question(question_id)
+    data = await state.get_data()
+    tariff_title = data.get("tariff_title")
+    q_cache = questionnaire_service.get_questionnaire_by_title(tariff_title)
+
+    question = q_cache.get_question(question_id)
 
     if question and question.type == 'text':
         next_question_id = await process_answer(state, questionnaire_service, question_id, message.text)
@@ -247,26 +269,18 @@ async def back_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire
         await cb.answer("Вы в самом начале, назад нельзя.", show_alert=True)
         return
 
-    # The last question in the history is the one we want to go *back* to.
     previous_q_id = question_history.pop()
     
-    # Get all the data, we will modify it and set it back
     data_to_update = await state.get_data()
-    
-    # Update the history in our local copy
     data_to_update['question_history'] = question_history
 
-    # Remove the answer for the question we are returning to
     if 'answers' in data_to_update:
         data_to_update['answers'].pop(str(previous_q_id), None)
     
-    # Also remove any temporary selections for it if it was a multi-select
     data_to_update.pop(f"multi_answers_{previous_q_id}", None)
 
-    # Set the modified data back into the state
     await state.set_data(data_to_update)
 
-    # Show the previous question
     await show_question(
         bot=cb.bot,
         chat_id=cb.from_user.id,

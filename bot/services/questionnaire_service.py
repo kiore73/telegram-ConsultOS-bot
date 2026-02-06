@@ -1,14 +1,12 @@
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..database.models import Question, QuestionLogic
-
-# --- Data Structures for Cached Questionnaire ---
+from ..database.models import Questionnaire, Question, QuestionLogic
 
 class CachedQuestion:
     """A lightweight, in-memory representation of a question."""
@@ -19,11 +17,9 @@ class CachedQuestion:
         self.options = options
 
 class QuestionnaireCache:
-    """Holds the entire questionnaire structure in memory for fast access."""
+    """Holds a single questionnaire structure in memory for fast access."""
     def __init__(self):
-        # {question_id: CachedQuestion}
         self.questions: Dict[int, CachedQuestion] = {}
-        # {question_id: {answer_value: next_question_id}}
         self.logic: Dict[int, Dict[str, Optional[int]]] = defaultdict(dict)
         self.start_question_id: Optional[int] = None
 
@@ -33,66 +29,50 @@ class QuestionnaireCache:
     def get_next_question_id(self, current_question_id: int, answer: str) -> Optional[int]:
         """Finds the next question ID based on the current question and answer."""
         question_logic = self.logic.get(current_question_id, {})
-        next_q_id = None
-        # Exact match first
         if answer in question_logic:
-            next_q_id = question_logic[answer]
-            logging.debug(f"QID {current_question_id}: Exact match for answer '{answer}', next QID: {next_q_id}")
-        # Fallback to a generic "any" rule
-        elif "любой" in question_logic:
-            next_q_id = question_logic["любой"]
-            logging.debug(f"QID {current_question_id}: Fallback to 'любой' for answer '{answer}', next QID: {next_q_id}")
-        
-        if next_q_id is None:
-            logging.debug(f"QID {current_question_id}: No next question found for answer '{answer}'")
-        
-        return next_q_id
-
-# --- Service to Build and Hold the Cache ---
+            return question_logic[answer]
+        return question_logic.get("любой")
 
 class QuestionnaireService:
     """
-    This service is responsible for loading the questionnaire from the database
-    into an in-memory cache for ultra-fast access during a user's session.
+    Manages loading and accessing multiple questionnaire caches from the database.
     It should be initialized once on bot startup.
     """
     def __init__(self):
-        self._cache = QuestionnaireCache()
+        self._caches: Dict[str, QuestionnaireCache] = {}
 
     async def load_from_db(self, session: AsyncSession):
         """
-        Loads all questions and their logic from the database and builds the cache.
-        This should be called once on startup.
+        Loads all questionnaires from the database and builds a cache for each.
         """
-        logging.info("Loading questionnaire into memory cache...")
+        logging.info("Loading all questionnaires into memory cache...")
         
-        # Eagerly load questions with their logic rules
-        stmt = select(Question).options(selectinload(Question.logic_rules)).order_by(Question.id)
+        stmt = select(Questionnaire).options(
+            selectinload(Questionnaire.questions).selectinload(Question.logic_rules)
+        )
         result = await session.execute(stmt)
-        all_questions = result.scalars().all()
+        all_questionnaires = result.scalars().unique().all()
 
-        if not all_questions:
-            logging.warning("No questions found in the database. Questionnaire will be empty.")
+        if not all_questionnaires:
+            logging.warning("No questionnaires found in the database.")
             return
 
-        # Ensure start_question_id is set only if questions exist
-        self._cache.start_question_id = all_questions[0].id if all_questions else None
+        for q_naire in all_questionnaires:
+            cache = QuestionnaireCache()
+            if q_naire.questions:
+                cache.start_question_id = q_naire.questions[0].id
+                for q in q_naire.questions:
+                    options = q.options if q.options else []
+                    cache.questions[q.id] = CachedQuestion(id=q.id, text=q.text, q_type=q.type, options=options)
+                    for logic_rule in q.logic_rules:
+                        cache.logic[q.id][logic_rule.answer_value] = logic_rule.next_question_id
+            
+            self._caches[q_naire.title] = cache
+            logging.info(f"Loaded questionnaire '{q_naire.title}' with {len(cache.questions)} questions.")
 
-        for q in all_questions:
-            # Options are now correctly loaded from the JSON field in the DB
-            options = q.options if q.options else []
-            self._cache.questions[q.id] = CachedQuestion(
-                id=q.id, text=q.text, q_type=q.type, options=options
-            )
-            for logic_rule in q.logic_rules:
-                self._cache.logic[q.id][logic_rule.answer_value] = logic_rule.next_question_id
-        
-        logging.info(f"Successfully loaded {len(self._cache.questions)} questions into cache. Starting with QID {self._cache.start_question_id}.")
-
-    def get_cache(self) -> QuestionnaireCache:
-        """Provides access to the loaded questionnaire cache."""
-        return self._cache
+    def get_questionnaire_by_title(self, title: str) -> Optional[QuestionnaireCache]:
+        """Provides access to a specific questionnaire cache by its title."""
+        return self._caches.get(title)
 
 # --- Global instance ---
-# This will be created once and used throughout the application
 questionnaire_service = QuestionnaireService()

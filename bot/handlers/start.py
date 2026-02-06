@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ..database.models import User
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from ..keyboards.start import get_tariffs_keyboard
 
 router = Router()
 
@@ -30,16 +30,10 @@ async def command_start_handler(message: Message, session: AsyncSession) -> None
         session.add(new_user)
         await session.commit()
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Перейти к оплате", callback_data="proceed_to_payment")
-            ]
-        ]
-    )
+    keyboard = get_tariffs_keyboard()
 
     await message.answer(
         f"Привет, {hbold(message.from_user.full_name)}!\n\n"
-        "Здесь будет описание вашей услуги. Нажмите кнопку ниже, чтобы перейти к оплате.",
+        "Выберите подходящий тариф для консультации:",
         reply_markup=keyboard
     )

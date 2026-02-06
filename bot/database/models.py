@@ -23,6 +23,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False) # Changed to BigInteger
     username = Column(String, nullable=True)
+    tariff = Column(String, nullable=True)
     has_paid = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

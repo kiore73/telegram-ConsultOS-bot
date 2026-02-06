@@ -17,7 +17,7 @@ from yookassa.domain.notification import WebhookNotificationFactory, WebhookNoti
 from .config import settings
 from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment
 from .database.session import async_engine, async_session_maker
-from .handlers import start, payment, questionnaire, booking, admin
+from .handlers import start, tariff, payment, questionnaire, booking, admin
 from .middlewares.db import DbSessionMiddleware
 from .services.questionnaire_service import questionnaire_service
 
@@ -26,15 +26,18 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 async def seed_questionnaire(session):
     """
-    Populates the database with the new, structured questionnaire.
-    This version is declarative and robust.
+    Populates the database with the new, structured questionnaire for each tariff.
     """
-    logging.info("Seeding new questionnaire data...")
-    main_questionnaire = Questionnaire(title="Основной опросник")
-    session.add(main_questionnaire)
-    await session.flush()
+    logging.info("Seeding questionnaire data for all tariffs...")
 
-    # Define specific answer options for single/multi questions (from user's request)
+    # 1. Basic Tariff Questionnaire
+    logging.info("Seeding 'basic' questionnaire...")
+    basic_questionnaire = Questionnaire(title="basic")
+    session.add(basic_questionnaire)
+    await session.flush()
+    
+    # Existing questions and logic from the original implementation
+    # This is now scoped to the 'basic' questionnaire
     options_data = {
         'q_gender': ['Мужчина', 'Женщина'],
         'q_occupation': ['Сидячая', 'Присутствует физическая нагрузка', 'Высокая умственная нагрузка / высокий уровень ответственности', 'Приходится долго стоять', 'Много разъездов, поездок, перелетов'],
@@ -182,7 +185,7 @@ async def seed_questionnaire(session):
     for q_def in question_definitions:
         options = options_data.get(q_def['id'])
         q = Question(
-            questionnaire_id=main_questionnaire.id,
+            questionnaire_id=basic_questionnaire.id, # Associate with basic questionnaire
             text=q_def['text'],
             type=q_def['type'],
             options=options,
@@ -284,27 +287,39 @@ async def seed_questionnaire(session):
         {'from': 'q_women_ecology', 'answer': 'любой', 'to': 'q_occupation'}, # End of women's branch
     ]
 
-    # 4. Create QuestionLogic entries
     for rule in logic_rules_definitions:
-        from_qid_str, answer_value, to_qid_str = rule['from'], rule['answer'], rule['to'] # Use dict keys
-
-        # Ensure source question exists
+        from_qid_str, answer_value, to_qid_str = rule['from'], rule['answer'], rule['to']
         if from_qid_str not in question_db_map:
             logging.error(f"Rule source question '{from_qid_str}' not found in question_db_map. Skipping rule.")
             continue
-        
         from_id = question_db_map[from_qid_str].id
         to_id = question_db_map.get(to_qid_str).id if to_qid_str else None
-        
-        # Add entry to QuestionLogic
         session.add(QuestionLogic(
             question_id=from_id,
             answer_value=answer_value,
             next_question_id=to_id
         ))
 
+    # 2. Support Tariff Questionnaire (Placeholder)
+    logging.info("Seeding placeholder 'support' questionnaire...")
+    support_questionnaire = Questionnaire(title="support")
+    session.add(support_questionnaire)
+    # TODO: Add questions and logic for the 'support' tariff here
+
+    # 3. Repeat Tariff Questionnaire (Placeholder)
+    logging.info("Seeding placeholder 'repeat' questionnaire...")
+    repeat_questionnaire = Questionnaire(title="repeat")
+    session.add(repeat_questionnaire)
+    # TODO: Add questions and logic for the 'repeat' tariff here
+
+    # 4. Lite Tariff Questionnaire (Placeholder)
+    logging.info("Seeding placeholder 'lite' questionnaire...")
+    lite_questionnaire = Questionnaire(title="lite")
+    session.add(lite_questionnaire)
+    # TODO: Add questions and logic for the 'lite' tariff here
+
     await session.commit()
-    logging.info("Questionnaire data seeded successfully with new logic.")
+    logging.info("All questionnaire data seeded successfully.")
 
 
 async def on_startup(bot: Bot):
@@ -380,7 +395,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
 
                         keyboard = types.InlineKeyboardMarkup(
                             inline_keyboard=[
-                                [types.InlineKeyboardButton(text="Перейти к опроснику", callback_data="start_questionnaire")]
+                                [types.InlineKeyboardButton(text="Перейти к опроснику", callback_data=f"start_questionnaire:{user.tariff}")]
                             ]
                         )
                         await bot.send_message(
@@ -423,6 +438,7 @@ def main() -> None:
 
     dp.update.middleware(DbSessionMiddleware(session_pool=async_session_maker))
     dp.include_router(start.router)
+    dp.include_router(tariff.router)
     dp.include_router(payment.router)
     dp.include_router(questionnaire.router)
     dp.include_router(booking.router)
