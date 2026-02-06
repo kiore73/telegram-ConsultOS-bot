@@ -117,22 +117,12 @@ async def go_to_next_question(
 
 @router.callback_query(F.data.startswith("start_questionnaire:"))
 async def start_questionnaire_handler(cb: types.CallbackQuery, state: FSMContext, questionnaire_service: QuestionnaireService, session: AsyncSession):
-    tariff = cb.data.split(":")[1]
+    questionnaire_title = cb.data.split(":")[1]
     
-    # Map tariff name to questionnaire title
-    # For now, only 'basic' is implemented
-    if tariff == 'basic':
-        questionnaire_title = "Основной опросник"
-    else:
-        # Placeholder for other tariffs
-        await cb.message.edit_text(f"Опросник для тарифа '{tariff}' еще не готов.")
-        await cb.answer()
-        return
-
     q_cache = questionnaire_service.get_questionnaire_by_title(questionnaire_title)
     
     if not q_cache or not q_cache.start_question_id:
-        await cb.message.edit_text("Опросник не найден или не настроен.")
+        await cb.message.edit_text(f"Извините, опросник для тарифа '{questionnaire_title}' еще не настроен.")
         await cb.answer()
         return
 
