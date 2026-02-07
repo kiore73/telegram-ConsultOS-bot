@@ -6,11 +6,10 @@ WORKDIR /app
 
 # Копируем файл с зависимостями и устанавливаем их
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --verbose -r requirements.txt
 
 # Копируем исходный код бота в рабочую директорию
 COPY ./bot /app/bot
-COPY ./bot/main.py /app/bot/main.py
 
 # Указываем команду для запуска бота
 CMD ["python", "bot/main.py"]
