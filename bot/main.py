@@ -326,18 +326,39 @@ async def on_startup(bot: Bot):
     """
     Handles bot startup. Initializes DB, loads questionnaire cache, and sets webhook.
     """
-    logging.info("Initializing database tables...")
+    startup_start_time = time.time()
+    logging.info("--- Bot Starting Up ---")
+
+    # Step 1: Initialize Database
+    db_init_start = time.time()
+    logging.info("Step 1: Initializing database tables...")
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logging.info("Database tables initialized.")
-    
-    async with async_session_maker() as session:
-        if not (await session.execute(select(Question))).first():
-            await seed_questionnaire(session)
+    logging.info(f"Step 1: Database tables initialized. (Took {time.time() - db_init_start:.4f}s)")
 
+    # Step 2: Seed Database if Needed
+    seed_start = time.time()
+    logging.info("Step 2: Checking if database needs to be seeded...")
+    async with async_session_maker() as session:
+        # Check if any questions exist. If not, seed the database.
+        result = await session.execute(select(Question).limit(1))
+        if not result.scalar_one_or_none():
+            logging.info("No questions found. Seeding database...")
+            await seed_questionnaire(session)
+            logging.info(f"Step 2: Database seeded. (Took {time.time() - seed_start:.4f}s)")
+        else:
+            logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
+
+    # Step 3: Load Questionnaire Cache
+    cache_load_start = time.time()
+    logging.info("Step 3: Loading questionnaire cache from database...")
     async with async_session_maker() as session:
         await questionnaire_service.load_from_db(session)
+    logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
 
+    # Step 4: Set Webhook (or delete if in polling mode)
+    webhook_setup_start = time.time()
+    logging.info("Step 4: Configuring Telegram webhook...")
     if settings.WEBHOOK_HOST:
         webhook_url = f"{settings.WEBHOOK_HOST}{settings.WEBHOOK_PATH}"
         await bot.set_webhook(webhook_url)
@@ -347,6 +368,9 @@ async def on_startup(bot: Bot):
     else:
         await bot.delete_webhook(drop_pending_updates=True)
         logging.info("Bot started in polling mode. Webhook deleted.")
+    logging.info(f"Step 4: Webhook configured. (Took {time.time() - webhook_setup_start:.4f}s)")
+    
+    logging.info(f"--- Bot Startup Complete. Total time: {time.time() - startup_start_time:.4f}s ---")
 
 
 async def on_shutdown(bot: Bot):
