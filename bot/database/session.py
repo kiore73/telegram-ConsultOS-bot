@@ -5,6 +5,7 @@ from ..config import settings
 async_engine = create_async_engine(
     settings.database_url,
     echo=False,  # Включаем логирование SQL-запросов, если нужно для отладки
+    connect_args={"timeout": 30},  # Добавляем таймаут подключения
 )
 
 # Создаем фабрику сессий для создания асинхронных сессий

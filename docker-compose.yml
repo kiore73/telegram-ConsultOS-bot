@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    command: python -c "import time; print('--- PYTHON IS RUNNING ---', flush=True); [time.sleep(1) for _ in range(999)]"
+    command: python -m bot.main
     restart: unless-stopped
     depends_on:
       - db
