@@ -69,6 +69,8 @@ async def _create_questionnaire_from_list(session, title, questions_list):
     return questionnaire
 
 
+import aiofiles
+...
 async def seed_database(session):
     logging.info("Seeding database with new structure...")
 
@@ -80,13 +82,13 @@ async def seed_database(session):
     session.add(q_gender)
 
     logging.info("Seeding 'ayurved_m' questionnaire...")
-    with open('аюрвед_м.txt', 'r', encoding='utf-8') as f:
-        ayurved_m_questions = json.load(f)
+    async with aiofiles.open('аюрвед_м.txt', 'r', encoding='utf-8') as f:
+        ayurved_m_questions = json.loads(await f.read())
     ayurved_m_questionnaire = await _create_questionnaire_from_list(session, 'ayurved_m', ayurved_m_questions)
 
     logging.info("Seeding 'ayurved_j' questionnaire...")
-    with open('аюрвед_ж.txt', 'r', encoding='utf-8') as f:
-        ayurved_j_questions = json.load(f)
+    async with aiofiles.open('аюрвед_ж.txt', 'r', encoding='utf-8') as f:
+        ayurved_j_questions = json.loads(await f.read())
     ayurved_j_questionnaire = await _create_questionnaire_from_list(session, 'ayurved_j', ayurved_j_questions)
 
     await session.flush()
@@ -125,21 +127,21 @@ async def on_startup(bot: Bot):
         await conn.run_sync(Base.metadata.create_all)
     logging.info(f"Step 1: Database tables initialized. (Took {time.time() - db_init_start:.4f}s)")
 
-    # seed_start = time.time()
-    # logging.info("Step 2: Checking if database needs to be seeded...")
-    # async with async_session_maker() as session:
-    #     result = await session.execute(select(Tariff).limit(1))
-    #     if not result.scalar_one_or_none():
-    #         logging.info("No tariffs found. Seeding database...")
-    #         await seed_database(session)
-    #     else:
-    #         logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
+    seed_start = time.time()
+    logging.info("Step 2: Checking if database needs to be seeded...")
+    async with async_session_maker() as session:
+        result = await session.execute(select(Tariff).limit(1))
+        if not result.scalar_one_or_none():
+            logging.info("No tariffs found. Seeding database...")
+            await seed_database(session)
+        else:
+            logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
 
-    # cache_load_start = time.time()
-    # logging.info("Step 3: Loading questionnaire cache from database...")
-    # async with async_session_maker() as session:
-    #     await questionnaire_service.load_from_db(session)
-    # logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
+    cache_load_start = time.time()
+    logging.info("Step 3: Loading questionnaire cache from database...")
+    async with async_session_maker() as session:
+        await questionnaire_service.load_from_db(session)
+    logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
 
     webhook_setup_start = time.time()
     logging.info("Step 4: Configuring Telegram webhook...")
@@ -153,6 +155,7 @@ async def on_startup(bot: Bot):
     logging.info(f"Step 4: Webhook configured. (Took {time.time() - webhook_setup_start:.4f}s)")
     
     logging.info(f"--- Bot Startup Complete. Total time: {time.time() - startup_start_time:.4f}s ---")
+
 
 
 async def on_shutdown(bot: Bot):
