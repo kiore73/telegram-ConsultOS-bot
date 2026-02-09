@@ -9,7 +9,7 @@ from ..keyboards.booking import get_calendar_keyboard
 
 router = Router()
 
-@router.callback_query(QuestionnaireFSM.in_questionnaire, F.data.startswith("q_"))
+@router.callback_query(QuestionnaireFSM.IN_QUESTIONNAIRE, F.data.startswith("q_"))
 async def answer_handler(cb: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     parts = cb.data.split('_')
     question_id = int(parts[1])

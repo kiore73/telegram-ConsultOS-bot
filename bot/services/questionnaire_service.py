@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from ..database.models import Questionnaire, Question, QuestionLogic
 from ..states.questionnaire import QuestionnaireFSM
 ...
-await state.set_state(QuestionnaireFSM.in_questionnaire)
+await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
 
 
 class CachedQuestion:
