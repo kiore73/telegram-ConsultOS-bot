@@ -498,3 +498,7 @@ if __name__ == "__main__":
         main()
     except (KeyboardInterrupt, SystemExit):
         logging.info("Bot stopped.")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+        time.sleep(5)  #
+        sys.exit(1)
