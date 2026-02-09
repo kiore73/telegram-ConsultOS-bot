@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..database.models import Questionnaire, Question, QuestionLogic
-from ..states.questionnaire import QuestionnaireState
+from ..states.questionnaire import QuestionnaireFSM
+...
+await state.set_state(QuestionnaireFSM.in_questionnaire)
 
 
 class CachedQuestion:
