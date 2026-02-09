@@ -17,7 +17,7 @@ from yookassa.domain.notification import WebhookNotificationFactory, WebhookNoti
 
 from .config import settings
 from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment
-from .database.session import async_engine, async_session_maker
+from .database.session import init_engine, async_session_maker
 from .handlers import start, tariff, payment, questionnaire, booking, admin
 from .middlewares.db import DbSessionMiddleware
 from .services.questionnaire_service import questionnaire_service
@@ -333,6 +333,7 @@ async def on_startup(bot: Bot):
     # Step 1: Initialize Database
     db_init_start = time.time()
     logging.info("Step 1: Initializing database tables...")
+    from .database.session import async_engine
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logging.info(f"Step 1: Database tables initialized. (Took {time.time() - db_init_start:.4f}s)")
@@ -458,6 +459,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
 
 
 def main() -> None:
+    init_engine()
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
 

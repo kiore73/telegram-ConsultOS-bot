@@ -1,19 +1,17 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from ..config import settings
 
-# Создаем асинхронный движок для взаимодействия с БД
-async_engine = create_async_engine(
-    settings.database_url,
-    echo=False,  # Включаем логирование SQL-запросов, если нужно для отладки
-    connect_args={"timeout": 30},  # Добавляем таймаут подключения
-)
+async_engine = None
+async_session_maker = async_sessionmaker(class_=AsyncSession, expire_on_commit=False)
 
-# Создаем фабрику сессий для создания асинхронных сессий
-async_session_maker = async_sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+def init_engine():
+    global async_engine
+    async_engine = create_async_engine(
+        settings.database_url,
+        echo=False,
+        connect_args={"timeout": 30},
+    )
+    async_session_maker.configure(bind=async_engine)
 
 async def get_async_session():
     """
