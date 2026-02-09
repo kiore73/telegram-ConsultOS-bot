@@ -21,7 +21,7 @@ from aiogram.fsm.context import FSMContext
 from .config import settings
 from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment, Tariff
 from .database.session import init_engine, async_session_maker
-from .handlers import start, tariff, payment, questionnaire, booking, admin, payment_success
+from .handlers import start, tariff, questionnaire, booking, admin, payment_success
 from .middlewares.db import DbSessionMiddleware
 from .services.questionnaire_service import questionnaire_service
 
@@ -214,7 +214,6 @@ def main() -> None:
     dp.update.middleware(DbSessionMiddleware(session_pool=async_session_maker))
     dp.include_router(start.router)
     dp.include_router(tariff.router)
-    dp.include_router(payment.router)
     dp.include_router(questionnaire.router)
     dp.include_router(booking.router)
     dp.include_router(admin.router)
