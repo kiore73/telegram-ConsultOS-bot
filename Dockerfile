@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --verbose -r requirements.txt
 
+# Копируем файлы опросников
+COPY аюрвед_*.txt ./
+
 # Копируем исходный код бота в рабочую директорию
 COPY ./bot /app/bot
 
