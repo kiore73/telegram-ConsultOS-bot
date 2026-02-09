@@ -30,7 +30,7 @@ class User(Base):
     username = Column(String, nullable=True)
     tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=True)
     has_paid = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     tariff = relationship("Tariff", back_populates="users")
 
 
@@ -54,7 +54,7 @@ class Payment(Base):
     amount = Column(Float, nullable=False)
     status = Column(String, nullable=False)
     provider_charge_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     user = relationship("User", back_populates="payments")
 
 
