@@ -1,23 +1,19 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from ..database.models import Tariff
 
-def get_tariffs_keyboard():
+async def get_tariffs_keyboard(session: AsyncSession) -> InlineKeyboardMarkup:
     """
-    Returns the keyboard with tariff selection buttons.
+    Fetches tariffs from the database and returns the keyboard with selection buttons.
     """
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Базовый (8000 RUB)", callback_data="tariff:basic:8000")
-            ],
-            [
-                InlineKeyboardButton(text="Сопровождение (20000 RUB)", callback_data="tariff:support:20000")
-            ],
-            [
-                InlineKeyboardButton(text="Повторная консультация (5000 RUB)", callback_data="tariff:repeat:5000")
-            ],
-            [
-                InlineKeyboardButton(text="Лайт консультация (3000 RUB)", callback_data="tariff:lite:3000")
-            ]
-        ]
-    )
-    return keyboard
+    tariffs_result = await session.execute(select(Tariff))
+    tariffs = tariffs_result.scalars().all()
+    
+    keyboard_buttons = []
+    for tariff in tariffs:
+        button_text = f"{tariff.name} ({int(tariff.price)} RUB)"
+        callback_data = f"tariff:{tariff.name}"
+        keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=callback_data)])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)

@@ -1,9 +1,8 @@
 import datetime
 from sqlalchemy import (
-    create_engine,
     Column,
     Integer,
-    BigInteger, # Import BigInteger
+    BigInteger,
     String,
     Float,
     Boolean,
@@ -12,20 +11,40 @@ from sqlalchemy import (
     Time,
     ForeignKey,
     JSON,
+    Table,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
+tariff_questionnaires_table = Table('tariff_questionnaires', Base.metadata,
+    Column('tariff_id', Integer, ForeignKey('tariffs.id'), primary_key=True),
+    Column('questionnaire_id', Integer, ForeignKey('questionnaires.id'), primary_key=True)
+)
+
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(BigInteger, unique=True, nullable=False) # Changed to BigInteger
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String, nullable=True)
-    tariff = Column(String, nullable=True)
+    tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=True)
     has_paid = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    tariff = relationship("Tariff", back_populates="users")
+
+
+class Tariff(Base):
+    __tablename__ = "tariffs"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    description = Column(String)
+    price = Column(Float, nullable=False)
+    users = relationship("User", back_populates="tariff")
+    questionnaires = relationship(
+        "Questionnaire",
+        secondary=tariff_questionnaires_table,
+        back_populates="tariffs")
 
 
 class Payment(Base):
@@ -34,9 +53,8 @@ class Payment(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     amount = Column(Float, nullable=False)
     status = Column(String, nullable=False)
-    telegram_charge_id = Column(String, nullable=True)
     provider_charge_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="payments")
 
 
@@ -46,7 +64,11 @@ User.payments = relationship("Payment", order_by=Payment.id, back_populates="use
 class Questionnaire(Base):
     __tablename__ = "questionnaires"
     id = Column(Integer, primary_key=True)
-    title = Column(String, nullable=False)
+    title = Column(String, nullable=False, unique=True)
+    tariffs = relationship(
+        "Tariff",
+        secondary=tariff_questionnaires_table,
+        back_populates="questionnaires")
 
 
 class Question(Base):
@@ -54,7 +76,7 @@ class Question(Base):
     id = Column(Integer, primary_key=True)
     questionnaire_id = Column(Integer, ForeignKey("questionnaires.id"), nullable=False)
     text = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # single, multi, text, photo
+    type = Column(String, nullable=False)
     options = Column(JSON, nullable=True)
     questionnaire = relationship("Questionnaire", back_populates="questions")
     logic_rules = relationship("QuestionLogic", back_populates="question", foreign_keys="[QuestionLogic.question_id]")
@@ -70,7 +92,7 @@ class QuestionLogic(Base):
     id = Column(Integer, primary_key=True)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     answer_value = Column(String, nullable=False)
-    next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=True) # Allow null
+    next_question_id = Column(Integer, ForeignKey("questions.id"), nullable=True)
     question = relationship("Question", back_populates="logic_rules", foreign_keys=[question_id])
 
 
@@ -102,7 +124,7 @@ class Booking(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     slot_id = Column(Integer, ForeignKey("time_slots.id"), nullable=False)
-    status = Column(String, nullable=False)  # e.g., 'confirmed', 'cancelled'
+    status = Column(String, nullable=False)
     user = relationship("User", back_populates="bookings")
     slot = relationship("TimeSlot", back_populates="bookings")
 

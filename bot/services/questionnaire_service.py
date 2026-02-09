@@ -1,12 +1,15 @@
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional
-
+from aiogram import Bot
+from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..database.models import Questionnaire, Question, QuestionLogic
+from ..states.questionnaire import QuestionnaireState
+
 
 class CachedQuestion:
     """A lightweight, in-memory representation of a question."""
@@ -36,15 +39,11 @@ class QuestionnaireCache:
 class QuestionnaireService:
     """
     Manages loading and accessing multiple questionnaire caches from the database.
-    It should be initialized once on bot startup.
     """
     def __init__(self):
         self._caches: Dict[str, QuestionnaireCache] = {}
 
     async def load_from_db(self, session: AsyncSession):
-        """
-        Loads all questionnaires from the database and builds a cache for each.
-        """
         logging.info("Loading all questionnaires into memory cache...")
         
         stmt = select(Questionnaire).options(
@@ -60,7 +59,14 @@ class QuestionnaireService:
         for q_naire in all_questionnaires:
             cache = QuestionnaireCache()
             if q_naire.questions:
-                cache.start_question_id = q_naire.questions[0].id
+                all_next_q_ids = {rule.next_question_id for q in q_naire.questions for rule in q.logic_rules}
+                start_questions = [q.id for q in q_naire.questions if q.id not in all_next_q_ids]
+                
+                if start_questions:
+                    cache.start_question_id = start_questions[0]
+                else:
+                    cache.start_question_id = q_naire.questions[0].id
+
                 for q in q_naire.questions:
                     options = q.options if q.options else []
                     cache.questions[q.id] = CachedQuestion(id=q.id, text=q.text, q_type=q.type, options=options)
@@ -71,8 +77,34 @@ class QuestionnaireService:
             logging.info(f"Loaded questionnaire '{q_naire.title}' with {len(cache.questions)} questions.")
 
     def get_questionnaire_by_title(self, title: str) -> Optional[QuestionnaireCache]:
-        """Provides access to a specific questionnaire cache by its title."""
         return self._caches.get(title)
 
-# --- Global instance ---
+    async def start_questionnaire(self, bot: Bot, user_id: int, message_id: int, state: FSMContext, session: AsyncSession):
+        from ..handlers import questionnaire as q_handler
+
+        data = await state.get_data()
+        pending = data.get("pending_questionnaires", [])
+        
+        if not pending:
+            await bot.send_message(user_id, "Все опросы завершены!")
+            await state.clear()
+            return
+
+        next_q_title = pending.pop(0)
+        q_cache = self.get_questionnaire_by_title(next_q_title)
+
+        if not q_cache or not q_cache.start_question_id:
+            await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=f"Не удалось запустить опросник '{next_q_title}'.")
+            await q_handler.end_current_questionnaire_and_proceed(bot, user_id, message_id, state, session)
+            return
+        
+        await state.set_state(QuestionnaireState.in_questionnaire)
+        await state.update_data(
+            pending_questionnaires=pending,
+            current_questionnaire_title=next_q_title,
+            question_history=[]
+        )
+        
+        await q_handler.show_question(bot, user_id, message_id, state, session, q_cache.start_question_id)
+
 questionnaire_service = QuestionnaireService()
