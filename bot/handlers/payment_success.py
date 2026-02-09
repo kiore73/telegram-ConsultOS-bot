@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import User
-from ..states.booking import BookingState
+from ..states.booking import BookingFSM
 from ..services import questionnaire_service
 
 router = Router()
@@ -20,7 +20,7 @@ async def on_payment_success(bot: Bot, session: AsyncSession, state: FSMContext,
 
     if tariff.name == "Повторная":
         await bot.send_message(user.telegram_id, "Спасибо за оплату! Давайте выберем время для вашей повторной консультации.")
-        await state.set_state(BookingState.choosing_slot)
+        await state.set_state(BookingFSM.DATE_SELECT)
         await bot.send_message(user.telegram_id, "Пожалуйста, выберите доступный слот.")
         return
 
