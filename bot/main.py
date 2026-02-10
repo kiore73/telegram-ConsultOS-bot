@@ -34,37 +34,50 @@ async def _create_questionnaire_from_list(session, title, questions_list):
     session.add(questionnaire)
     await session.flush()
 
+    questions_to_add = []
+    logic_to_add = []
     question_map = {}
-    prev_question_id = None
+    prev_question = None
 
-    for i, q_def in enumerate(questions_list):
+    for q_def in questions_list:
         q = Question(
             questionnaire_id=questionnaire.id,
             text=q_def['text'],
             type=q_def['type'],
             options=q_def.get('options')
         )
-        session.add(q)
-        await session.flush()
+        questions_to_add.append(q)
+        # We need the ID for linking, so flush after adding all questions for this questionnaire
+        # This will get IDs for all questions in questions_to_add
+    
+    session.add_all(questions_to_add)
+    await session.flush() # Get IDs for newly added questions
+
+    # Now that we have IDs, link questions and create logic
+    for i, q_def in enumerate(questions_list):
+        q = questions_to_add[i] # Get the question with its ID
         question_map[q_def['id']] = q
 
-        if prev_question_id:
+        if prev_question:
             logic = QuestionLogic(
-                question_id=prev_question_id,
+                question_id=prev_question.id,
                 answer_value='любой', 
                 next_question_id=q.id
             )
-            session.add(logic)
+            logic_to_add.append(logic)
         
-        prev_question_id = q.id
+        prev_question = q
             
-    if prev_question_id:
+    if prev_question:
         final_logic = QuestionLogic(
-            question_id=prev_question_id,
+            question_id=prev_question.id,
             answer_value='любой',
             next_question_id=None
         )
-        session.add(final_logic)
+        logic_to_add.append(final_logic)
+
+    session.add_all(logic_to_add)
+    # No flush here, let the caller handle commit.
 
     return questionnaire
 
@@ -78,8 +91,25 @@ async def seed_database(session):
     basic_questionnaire = Questionnaire(title="basic")
     session.add(basic_questionnaire)
     await session.flush()
+    
+    # Collect basic questionnaire questions
+    basic_questions_to_add = []
+    basic_logic_to_add = []
+    
+    # Basic questionnaire's initial questions and logic (simplified for brevity)
     q_gender = Question(questionnaire_id=basic_questionnaire.id, text="Укажите ваш пол", type='single', options=['Мужчина', 'Женщина'])
-    session.add(q_gender)
+    basic_questions_to_add.append(q_gender)
+
+    session.add_all(basic_questions_to_add)
+    await session.flush()
+    # Add logic for basic_questionnaire here (e.g., gender branching)
+    # For now, a placeholder to add the gender question logic
+    logic_q_gender_m = QuestionLogic(question_id=q_gender.id, answer_value='Мужчина', next_question_id=None) # Placeholder, will be linked to ayurved_m later
+    logic_q_gender_f = QuestionLogic(question_id=q_gender.id, answer_value='Женщина', next_question_id=None) # Placeholder, will be linked to ayurved_j later
+    basic_logic_to_add.extend([logic_q_gender_m, logic_q_gender_f])
+    
+    session.add_all(basic_logic_to_add)
+    # No flush here
 
     logging.info("Seeding 'ayurved_m' questionnaire...")
     async with aiofiles.open('аюрвед_м.txt', 'r', encoding='utf-8') as f:
@@ -91,9 +121,10 @@ async def seed_database(session):
         ayurved_j_questions = json.loads(await f.read())
     ayurved_j_questionnaire = await _create_questionnaire_from_list(session, 'ayurved_j', ayurved_j_questions)
 
-    await session.flush()
+    # Note: No session.flush() here, as _create_questionnaire_from_list handles its own flush.
 
     logging.info("Seeding tariffs...")
+    tariffs_to_add = []
     tariffs_data = {
         'Базовый': {'price': 1000, 'description': 'Полная консультация'},
         'Сопровождение': {'price': 2000, 'description': 'Полная консультация с сопровождением'},
@@ -103,9 +134,11 @@ async def seed_database(session):
     tariffs = {}
     for name, data in tariffs_data.items():
         tariff = Tariff(name=name, price=data['price'], description=data['description'])
-        session.add(tariff)
+        tariffs_to_add.append(tariff)
         tariffs[name] = tariff
-    await session.flush()
+    
+    session.add_all(tariffs_to_add)
+    await session.flush() # Flush to get IDs for tariffs before linking
 
     logging.info("Linking tariffs to questionnaires...")
     tariffs['Базовый'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
