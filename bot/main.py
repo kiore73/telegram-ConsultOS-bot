@@ -120,27 +120,28 @@ async def on_startup(bot: Bot):
     startup_start_time = time.time()
     logging.info("--- Bot Starting Up ---")
 
-    db_init_start = time.time()
-    logging.info("Step 1: Initializing database tables...")
-    from .database.session import async_engine
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logging.info(f"Step 1: Database tables initialized. (Took {time.time() - db_init_start:.4f}s)")
+    # # Step 1: Initialize Database
+    # db_init_start = time.time()
+    # logging.info("Step 1: Initializing database tables...")
+    # from .database.session import async_engine
+    # async with async_engine.begin() as conn:
+    #     await conn.run_sync(Base.metadata.create_all)
+    # logging.info(f"Step 1: Database tables initialized. (Took {time.time() - db_init_start:.4f}s)")
 
-    async with async_session_maker() as session:
-        seed_start = time.time()
-        logging.info("Step 2: Checking if database needs to be seeded...")
-        result = await session.execute(select(Tariff).limit(1))
-        if not result.scalar_one_or_none():
-            logging.info("No tariffs found. Seeding database...")
-            await seed_database(session)
-        else:
-            logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
+    # async with async_session_maker() as session:
+    #     # seed_start = time.time()
+    #     # logging.info("Step 2: Checking if database needs to be seeded...")
+    #     # result = await session.execute(select(Tariff).limit(1))
+    #     # if not result.scalar_one_or_none():
+    #     #     logging.info("No tariffs found. Seeding database...")
+    #     #     await seed_database(session)
+    #     # else:
+    #     #     logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
 
-        cache_load_start = time.time()
-        logging.info("Step 3: Loading questionnaire cache from database...")
-        await questionnaire_service.load_from_db(session)
-        logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
+    #     # cache_load_start = time.time()
+    #     # logging.info("Step 3: Loading questionnaire cache from database...")
+    #     # await questionnaire_service.load_from_db(session)
+    #     # logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
 
     webhook_setup_start = time.time()
     logging.info("Step 4: Configuring Telegram webhook...")
