@@ -245,11 +245,8 @@ def main():
         web.run_app(app, host="0.0.0.0", port=settings.WEB_SERVER_PORT)
     else:
         # Long-polling setup
-        async def start_polling():
-            await on_startup(dispatcher, bot)  # Manually call on_startup for long-polling
-            await dispatcher.start_polling(bot)
-
-        asyncio.run(start_polling())
+        dispatcher.startup.register(on_startup)
+        asyncio.run(dispatcher.start_polling(bot))
     logging.info("Bot stopped.")
 
 

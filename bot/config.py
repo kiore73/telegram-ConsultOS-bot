@@ -59,6 +59,13 @@ class Settings(BaseSettings):
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    @property
+    def WEBHOOK_URL(self) -> str | None:
+        """ Constructs the full webhook URL from host and path. """
+        if self.WEBHOOK_HOST:
+            return f"{self.WEBHOOK_HOST.strip('/')}{self.WEBHOOK_PATH}"
+        return None
+
 # Create a single instance of the settings
 settings = Settings()
 
