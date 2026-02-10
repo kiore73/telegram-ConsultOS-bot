@@ -140,10 +140,38 @@ async def seed_database(session):
     session.add_all(tariffs_to_add)
     await session.flush() # Flush to get IDs for tariffs before linking
 
-    # logging.info("Linking tariffs to questionnaires...")
-    # tariffs['Базовый'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
-    # tariffs['Сопровождение'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
-    # tariffs['Лайт'].questionnaires.extend([ayurved_m_questionnaire, ayurved_j_questionnaire])
+    logging.info("Linking tariffs to questionnaires...")
+    from .database.models import tariff_questionnaires_table # Import here to avoid circular dependency
+    
+    # Basic Tariff
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Базовый'].id, questionnaire_id=basic_questionnaire.id
+    ))
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Базовый'].id, questionnaire_id=ayurved_m_questionnaire.id
+    ))
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Базовый'].id, questionnaire_id=ayurved_j_questionnaire.id
+    ))
+
+    # Support Tariff
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Сопровождение'].id, questionnaire_id=basic_questionnaire.id
+    ))
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Сопровождение'].id, questionnaire_id=ayurved_m_questionnaire.id
+    ))
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Сопровождение'].id, questionnaire_id=ayurved_j_questionnaire.id
+    ))
+
+    # Lite Tariff
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Лайт'].id, questionnaire_id=ayurved_m_questionnaire.id
+    ))
+    session.execute(tariff_questionnaires_table.insert().values(
+        tariff_id=tariffs['Лайт'].id, questionnaire_id=ayurved_j_questionnaire.id
+    ))
     
     await session.commit()
     logging.info("Database seeding completed successfully.")
@@ -171,11 +199,10 @@ async def on_startup(bot: Bot):
         else:
             logging.info(f"Step 2: Database already seeded. Skipping. (Took {time.time() - seed_start:.4f}s)")
 
-    # cache_load_start = time.time()
-    # logging.info("Step 3: Loading questionnaire cache from database...")
-    # async with async_session_maker() as session:
-    #     await questionnaire_service.load_from_db(session)
-    # logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
+        cache_load_start = time.time()
+        logging.info("Step 3: Loading questionnaire cache from database...")
+        await questionnaire_service.load_from_db(session)
+        logging.info(f"Step 3: Questionnaire cache loaded. (Took {time.time() - cache_load_start:.4f}s)")
 
     webhook_setup_start = time.time()
     logging.info("Step 4: Configuring Telegram webhook...")
