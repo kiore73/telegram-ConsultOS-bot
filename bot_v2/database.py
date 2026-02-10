@@ -1,8 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
 from bot.config import settings
+from .models import Base
 
-Base = declarative_base()
 
 def create_db_engine():
     """
