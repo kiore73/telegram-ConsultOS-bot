@@ -7,6 +7,10 @@ from ..states.booking import BookingFSM
 from ..keyboards.questionnaire import get_question_keyboard
 from ..keyboards.booking import get_calendar_keyboard
 
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+from ..database.models import User, Tariff # Add User and Tariff imports
+
 router = Router()
 
 def _get_questionnaire_service():
@@ -19,7 +23,31 @@ async def end_current_questionnaire_and_proceed(bot: Bot, chat_id: int, message_
     """
     data = await state.get_data()
     pending = data.get("pending_questionnaires", [])
-    
+    current_q_title = data.get("current_questionnaire_title")
+
+    user_result = await session.execute(
+        select(User).options(joinedload(User.tariff)).where(User.telegram_id == chat_id)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if user and user.tariff and user.tariff.name in ["Базовый", "Сопровождение"] and current_q_title == "basic":
+        answers = data.get("answers", {})
+        basic_q_cache = _get_questionnaire_service().get_questionnaire_by_title("basic")
+        
+        gender_question_id = None
+        for q_id, q_obj in basic_q_cache.questions.items():
+            if q_obj.text == "Укажите ваш пол":
+                gender_question_id = q_obj.id
+                break
+        
+        if gender_question_id:
+            gender_answer = answers.get(str(gender_question_id))
+            if gender_answer == "Мужчина":
+                pending.append("ayurved_m")
+            elif gender_answer == "Женщина":
+                pending.append("ayurved_j")
+            await state.update_data(pending_questionnaires=pending) # Update state with new pending
+        
     if pending:
         await _get_questionnaire_service().start_questionnaire(bot, chat_id, message_id, state, session)
     else:
