@@ -1,12 +1,9 @@
-# VERSION 19: Multi-questionnaire logic
-print("---> RUNNING MAIN.PY VERSION 19 ---")
+# VERSION 20: Definitive Fix
+print("---> RUNNING MAIN.PY VERSION 20 ---")
 import asyncio
 import logging
-import sys
-import time
 from urllib.parse import urlparse
 import json
-from functools import partial
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -15,11 +12,9 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from sqlalchemy.orm import joinedload, sessionmaker
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotification
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.context import FSMContext
 
 from .config import settings
 from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment, Tariff
@@ -28,15 +23,10 @@ from .handlers import start, tariff, questionnaire, booking, admin, payment_succ
 from .middlewares.db import DbSessionMiddleware
 from .services.questionnaire_service import questionnaire_service
 
-import aiofiles
-
 # Import questionnaire data
 from .data.basic_questionnaire_data import options_data_basic, question_definitions_basic, logic_rules_definitions_basic
 from .data.ayurved_m_questionnaire_data import question_definitions_ayurved_m
 from .data.ayurved_j_questionnaire_data import question_definitions_ayurved_j
-
-
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 
 async def _create_questionnaire_from_list(session, title, questions_list):
@@ -58,15 +48,12 @@ async def _create_questionnaire_from_list(session, title, questions_list):
             options=q_def.get('options')
         )
         questions_to_add.append(q)
-        # We need the ID for linking, so flush after adding all questions for this questionnaire
-        # This will get IDs for all questions in questions_to_add
     
     session.add_all(questions_to_add)
-    await session.flush() # Get IDs for newly added questions
+    await session.flush()
 
-    # Now that we have IDs, link questions and create logic
     for i, q_def in enumerate(questions_list):
-        q = questions_to_add[i] # Get the question with its ID
+        q = questions_to_add[i]
         question_map[q_def['id']] = q
 
         if prev_question:
@@ -88,9 +75,75 @@ async def _create_questionnaire_from_list(session, title, questions_list):
         logic_to_add.append(final_logic)
 
     session.add_all(logic_to_add)
-    # No flush here, let the caller handle commit.
-
     return questionnaire
+
+
+async def seed_database(session_maker: async_sessionmaker):
+    logging.info("Seeding database with new structure...")
+    async with session_maker() as session:
+        logging.info("Seeding 'basic' questionnaire...")
+        basic_questionnaire = Questionnaire(title="basic")
+        session.add(basic_questionnaire)
+        await session.flush()
+
+        question_id_map = {}
+        for q_def in question_definitions_basic:
+            q_options = options_data_basic.get(q_def['id'])
+            question = Question(
+                questionnaire_id=basic_questionnaire.id,
+                text=q_def['text'],
+                type=q_def['type'],
+                options=q_options
+            )
+            session.add(question)
+            await session.flush()
+            question_id_map[q_def['id']] = question.id
+
+        for rule_def in logic_rules_definitions_basic:
+            logic_rule = QuestionLogic(
+                question_id=question_id_map[rule_def['from_id']],
+                answer_value=rule_def['answer'],
+                next_question_id=question_id_map.get(rule_def['to_id'])
+            )
+            session.add(logic_rule)
+        await session.flush()
+
+        logging.info("Seeding 'ayurved_m' questionnaire...")
+        ayurved_m_questionnaire = await _create_questionnaire_from_list(
+            session, "ayurved_m", question_definitions_ayurved_m
+        )
+        logging.info("Seeding 'ayurved_j' questionnaire...")
+        ayurved_j_questionnaire = await _create_questionnaire_from_list(
+            session, "ayurved_j", question_definitions_ayurved_j
+        )
+
+        logging.info("Seeding tariffs...")
+        tariffs_to_add = [
+            Tariff(title="Базовый", price=2500, description="Базовый тариф"),
+            Tariff(title="Сопровождение", price=5000, description="Тариф с сопровождением"),
+            Tariff(title="Повторная", price=2000, description="Повторная консультация"),
+            Tariff(title="Лайт", price=1500, description="Легкий тариф"),
+        ]
+        session.add_all(tariffs_to_add)
+        await session.flush()
+
+        from sqlalchemy import insert
+        tariff_questionnaires_table = Base.metadata.tables['tariff_questionnaires']
+        await session.execute(
+            insert(tariff_questionnaires_table),
+            [
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": basic_questionnaire.id},
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_m_questionnaire.id},
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_j_questionnaire.id},
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": basic_questionnaire.id},
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_m_questionnaire.id},
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_j_questionnaire.id},
+                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_m_questionnaire.id},
+                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_j_questionnaire.id},
+            ],
+        )
+        await session.commit()
+        logging.info("Tariffs and questionnaire links seeded.")
 
 
 async def main():
@@ -100,17 +153,13 @@ async def main():
     )
     logging.info("Starting bot...")
 
-    # Initialize Bot and Dispatcher
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
-
-    # Create a fully configured session maker before it's used
+    
     session_maker = await create_session_maker()
 
-    # Register middlewares
     dp.update.middleware(DbSessionMiddleware(session_pool=session_maker))
 
-    # Register handlers
     dp.include_router(start.router)
     dp.include_router(tariff.router)
     dp.include_router(questionnaire.router)
@@ -118,7 +167,6 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(payment_success.router)
 
-    # Initialize database and seed if necessary
     engine = session_maker.kw["bind"]
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -128,12 +176,10 @@ async def main():
         else:
             logging.info("Database already contains data, skipping seeding.")
 
-    # Load initial questionnaire cache
     async with session_maker() as session:
         await questionnaire_service.load_from_db(session)
     logging.info("Questionnaire cache loaded.")
 
-    # Decide how to run the bot
     is_webhook_mode = bool(settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip())
 
     if is_webhook_mode:
@@ -143,7 +189,6 @@ async def main():
         )
         logging.info(f"Webhook set to {settings.WEBHOOK_URL}")
 
-        # Webhook handler for YooKassa
         async def yookassa_webhook_handler(request):
             notification_body = await request.json()
             notification = WebhookNotificationFactory().create(notification_body)
@@ -173,7 +218,6 @@ async def main():
         site = web.TCPSite(runner, host=settings.WEB_SERVER_HOST, port=settings.WEB_SERVER_PORT)
         await site.start()
         
-        # Keep the main coroutine running
         await asyncio.Event().wait()
 
     else:
