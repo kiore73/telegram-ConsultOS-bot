@@ -23,7 +23,7 @@ from aiogram.fsm.context import FSMContext
 
 from .config import settings
 from .database.models import Base, Questionnaire, Question, QuestionLogic, User, Payment, Tariff
-from .database.session import init_engine, async_session_maker
+from .database.session import create_session_maker
 from .handlers import start, tariff, questionnaire, booking, admin, payment_success
 from .middlewares.db import DbSessionMiddleware
 from .services.questionnaire_service import questionnaire_service
@@ -93,142 +93,63 @@ async def _create_questionnaire_from_list(session, title, questions_list):
     return questionnaire
 
 
-async def seed_database(session_maker: async_sessionmaker):
-    logging.info("Seeding database with new structure...")
-    async with session_maker() as session:
-        logging.info("Seeding 'basic' questionnaire...")
-        basic_questionnaire = Questionnaire(title="basic")
-        session.add(basic_questionnaire)
-        await session.flush()
+async def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    )
+    logging.info("Starting bot...")
 
-        # Populate basic questionnaire
-        question_id_map = {}
-        for q_def in question_definitions_basic:
-            q_options = options_data_basic.get(q_def['id'])
-            question = Question(
-                questionnaire_id=basic_questionnaire.id,
-                text=q_def['text'],
-                type=q_def['type'],
-                options=q_options
-            )
-            session.add(question)
-            await session.flush()  # To get the ID for the question
-            question_id_map[q_def['id']] = question.id
+    # Initialize Bot and Dispatcher
+    bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher(storage=MemoryStorage())
 
-        for rule_def in logic_rules_definitions_basic:
-            logic_rule = QuestionLogic(
-                question_id=question_id_map[rule_def['from_id']],
-                answer_value=rule_def['answer'],
-                next_question_id=question_id_map.get(rule_def['to_id'])
-            )
-            session.add(logic_rule)
-        await session.flush()
+    # Create a fully configured session maker before it's used
+    session_maker = await create_session_maker()
 
-        logging.info("Seeding 'ayurved_m' questionnaire...")
-        ayurved_m_questionnaire = await _create_questionnaire_from_list(
-            session, "ayurved_m", question_definitions_ayurved_m
-        )
-        logging.info("Seeding 'ayurved_j' questionnaire...")
-        ayurved_j_questionnaire = await _create_questionnaire_from_list(
-            session, "ayurved_j", question_definitions_ayurved_j
-        )
+    # Register middlewares
+    dp.update.middleware(DbSessionMiddleware(session_pool=session_maker))
 
-        # Seed initial tariffs
-        logging.info("Seeding tariffs...")
-        tariffs_to_add = [
-            Tariff(title="Базовый", price=2500, description="Базовый тариф"),
-            Tariff(title="Сопровождение", price=5000, description="Тариф с сопровождением"),
-            Tariff(title="Повторная", price=2000, description="Повторная консультация"),
-            Tariff(title="Лайт", price=1500, description="Легкий тариф"),
-        ]
-        session.add_all(tariffs_to_add)
-        await session.flush()
+    # Register handlers
+    dp.include_router(start.router)
+    dp.include_router(tariff.router)
+    dp.include_router(questionnaire.router)
+    dp.include_router(booking.router)
+    dp.include_router(admin.router)
+    dp.include_router(payment_success.router)
 
-        # Link questionnaires to tariffs
-        from sqlalchemy import insert
-        tariff_questionnaires_table = Base.metadata.tables['tariff_questionnaires']
-
-        await session.execute(
-            insert(tariff_questionnaires_table),
-            [
-                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": basic_questionnaire.id},  # Базовый
-                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_m_questionnaire.id},
-                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_j_questionnaire.id},
-
-                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": basic_questionnaire.id},  # Сопровождение
-                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_m_questionnaire.id},
-                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_j_questionnaire.id},
-
-                # Повторная - no questionnaires
-
-                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_m_questionnaire.id},  # Лайт
-                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_j_questionnaire.id},
-            ],
-        )
-        await session.commit()
-        logging.info("Tariffs and questionnaire links seeded.")
-
-
-async def on_startup(dispatcher: Dispatcher, bot: Bot):
-    if settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip():
-        await bot.set_webhook(url=settings.WEBHOOK_URL)
-        logging.info(f"Webhook set up at {settings.WEBHOOK_URL}")
-    else:
-        await bot.delete_webhook(drop_pending_updates=True)
-        logging.info("Webhook deleted, running in long-polling mode.")
-
-    # Initialize database engine and create tables
-    engine = init_engine()
+    # Initialize database and seed if necessary
+    engine = session_maker.kw["bind"]
     async with engine.begin() as conn:
-        # Create tables
         await conn.run_sync(Base.metadata.create_all)
-
-        # Check if database is empty and seed if necessary
         result = await conn.execute(select(User).limit(1))
         if result.scalar_one_or_none() is None:
-            await seed_database(async_session_maker)
+            await seed_database(session_maker)
         else:
             logging.info("Database already contains data, skipping seeding.")
 
     # Load initial questionnaire cache
-    async with async_session_maker() as session:
+    async with session_maker() as session:
         await questionnaire_service.load_from_db(session)
     logging.info("Questionnaire cache loaded.")
 
-    # Register admin commands
-    from .handlers.admin import register_admin_handlers
-    register_admin_handlers(dispatcher.router)
+    # Decide how to run the bot
+    is_webhook_mode = bool(settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip())
 
+    if is_webhook_mode:
+        await bot.set_webhook(
+            url=settings.WEBHOOK_URL,
+            drop_pending_updates=True
+        )
+        logging.info(f"Webhook set to {settings.WEBHOOK_URL}")
 
-# ... (existing imports)
-
-def main():
-    logging.info("Starting bot...")
-    bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dispatcher = Dispatcher(storage=MemoryStorage())
-
-    # Register middlewares
-    dispatcher.message.middleware(DbSessionMiddleware(async_session_maker))
-    dispatcher.callback_query.middleware(DbSessionMiddleware(async_session_maker))
-
-    # Register handlers
-    dispatcher.include_router(start.router)
-    dispatcher.include_router(tariff.router)
-    dispatcher.include_router(questionnaire.router)
-    dispatcher.include_router(booking.router)
-    dispatcher.include_router(admin.router)
-    dispatcher.include_router(payment_success.router)
-
-
-    # Webhook handler for YooKassa
-    async def yookassa_webhook_handler(request, dispatcher: Dispatcher, bot: Bot):
-        notification_body = await request.json()
-        notification = WebhookNotificationFactory().create(notification_body)
-        if notification.event == 'payment.succeeded':
-            payment_id = notification.object.id
-            async with async_session_maker() as session:
-                async with session.begin():
-                    # Use joinedload to fetch the user along with the payment
+        # Webhook handler for YooKassa
+        async def yookassa_webhook_handler(request):
+            notification_body = await request.json()
+            notification = WebhookNotificationFactory().create(notification_body)
+            if notification.event == 'payment.succeeded':
+                payment_id = notification.object.id
+                async with session_maker() as session:
                     result = await session.execute(
                         select(Payment).options(joinedload(Payment.user)).filter_by(yookassa_id=payment_id)
                     )
@@ -236,31 +157,33 @@ def main():
 
                     if payment and payment.user:
                         payment.status = 'succeeded'
-                        # Trigger the payment success logic
-                        await payment_success.on_payment_success(bot, session, dispatcher, payment)
+                        await session.commit()
+                        await payment_success.on_payment_success(bot, session, dp, payment)
                     else:
-                        logging.warning(f"Payment with yookassa_id {payment_id} or its associated user not found.")
-            return web.Response(status=200)
-        return web.Response(status=400)
-
-
-    # Start long-polling or webhook
-    is_webhook_host_valid = bool(settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip())
-    if is_webhook_host_valid:
+                        logging.warning(f"Payment with yookassa_id {payment_id} or its user not found.")
+                return web.Response(status=200)
+            return web.Response(status=400)
+        
         app = web.Application()
-        # Use partial to pass dispatcher and bot to the handler
-        handler = partial(yookassa_webhook_handler, dispatcher=dispatcher, bot=bot)
-        app.router.add_post("/webhook", SimpleRequestHandler(dispatcher, bot, process_update=True))
-        app.router.add_post("/yookassa_webhook", handler)
-        setup_application(app, dispatcher, bot=bot)
-        web.run_app(app, host="0.0.0.0", port=settings.WEB_SERVER_PORT)
+        app.router.add_post(urlparse(settings.WEBHOOK_URL).path, SimpleRequestHandler(dispatcher=dp, bot=bot))
+        app.router.add_post("/yookassa_webhook", yookassa_webhook_handler)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host=settings.WEB_SERVER_HOST, port=settings.WEB_SERVER_PORT)
+        await site.start()
+        
+        # Keep the main coroutine running
+        await asyncio.Event().wait()
+
     else:
-        # Long-polling setup
-        dispatcher.startup.register(on_startup)
-        asyncio.run(dispatcher.start_polling(bot))
-    logging.info("Bot stopped.")
+        await bot.delete_webhook(drop_pending_updates=True)
+        logging.info("Running in long-polling mode.")
+        await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    main()
-
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot stopped!")
