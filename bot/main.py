@@ -7,6 +7,7 @@ import time
 from urllib.parse import urlparse
 import json
 from functools import partial
+from functools import partial
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -195,7 +196,6 @@ async def on_startup(dispatcher: Dispatcher, bot: Bot):
     register_admin_handlers(dispatcher.router)
 
 
-from functools import partial
 # ... (existing imports)
 
 def main():
@@ -241,6 +241,7 @@ def main():
 
 
     # Start long-polling or webhook
+    is_webhook_host_valid = bool(settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip())
     if is_webhook_host_valid:
         app = web.Application()
         # Use partial to pass dispatcher and bot to the handler
