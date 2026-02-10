@@ -233,7 +233,11 @@ def main():
 
 
     # Start long-polling or webhook
-    if settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip():
+    logging.info(f"DEBUG: settings.WEBHOOK_HOST = '{settings.WEBHOOK_HOST}' (type: {type(settings.WEBHOOK_HOST)})")
+    is_webhook_host_valid = bool(settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip())
+    logging.info(f"DEBUG: is_webhook_host_valid = {is_webhook_host_valid}")
+
+    if is_webhook_host_valid:
         app = web.Application()
         app.router.add_post("/webhook", SimpleRequestHandler(dispatcher, bot, process_update=True))
         app.router.add_post("/yookassa_webhook", yookassa_webhook_handler)
