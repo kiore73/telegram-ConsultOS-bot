@@ -1,4 +1,6 @@
-[
+# bot/data/ayurved_j_questionnaire_data.py
+
+question_definitions_ayurved_j = [
   {
     "id": "constitution_body_type",
     "type": "single",

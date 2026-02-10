@@ -1,4 +1,6 @@
-[
+# bot/data/ayurved_m_questionnaire_data.py
+
+question_definitions_ayurved_m = [
   {
     "id": "body_type_2",
     "type": "single",
