@@ -92,81 +92,80 @@ async def _create_questionnaire_from_list(session, title, questions_list):
     return questionnaire
 
 
-async def seed_database(session):
+async def seed_database(session_maker: async_sessionmaker):
     logging.info("Seeding database with new structure...")
+    async with session_maker() as session:
+        logging.info("Seeding 'basic' questionnaire...")
+        basic_questionnaire = Questionnaire(title="basic")
+        session.add(basic_questionnaire)
+        await session.flush()
 
-    logging.info("Seeding 'basic' questionnaire...")
-    basic_questionnaire = Questionnaire(title="basic")
-    session.add(basic_questionnaire)
-    await session.flush()
+        # Populate basic questionnaire
+        question_id_map = {}
+        for q_def in question_definitions_basic:
+            q_options = options_data_basic.get(q_def['id'])
+            question = Question(
+                questionnaire_id=basic_questionnaire.id,
+                text=q_def['text'],
+                type=q_def['type'],
+                options=q_options
+            )
+            session.add(question)
+            await session.flush()  # To get the ID for the question
+            question_id_map[q_def['id']] = question.id
 
-    # Populate basic questionnaire
-    question_id_map = {}
-    for q_def in question_definitions_basic:
-        q_options = options_data_basic.get(q_def['id'])
-        question = Question(
-            questionnaire_id=basic_questionnaire.id,
-            text=q_def['text'],
-            type=q_def['type'],
-            options=q_options
+        for rule_def in logic_rules_definitions_basic:
+            logic_rule = QuestionLogic(
+                question_id=question_id_map[rule_def['from_id']],
+                answer_value=rule_def['answer'],
+                next_question_id=question_id_map.get(rule_def['to_id'])
+            )
+            session.add(logic_rule)
+        await session.flush()
+
+        logging.info("Seeding 'ayurved_m' questionnaire...")
+        ayurved_m_questionnaire = await _create_questionnaire_from_list(
+            session, "ayurved_m", question_definitions_ayurved_m
         )
-        session.add(question)
-        await session.flush()  # To get the ID for the question
-        question_id_map[q_def['id']] = question.id
-
-    for rule_def in logic_rules_definitions_basic:
-        logic_rule = QuestionLogic(
-            question_id=question_id_map[rule_def['from_id']],
-            answer_value=rule_def['answer'],
-            next_question_id=question_id_map.get(rule_def['to_id'])
+        logging.info("Seeding 'ayurved_j' questionnaire...")
+        ayurved_j_questionnaire = await _create_questionnaire_from_list(
+            session, "ayurved_j", question_definitions_ayurved_j
         )
-        session.add(logic_rule)
-    await session.flush()
 
+        # Seed initial tariffs
+        logging.info("Seeding tariffs...")
+        tariffs_to_add = [
+            Tariff(title="Базовый", price=2500, description="Базовый тариф"),
+            Tariff(title="Сопровождение", price=5000, description="Тариф с сопровождением"),
+            Tariff(title="Повторная", price=2000, description="Повторная консультация"),
+            Tariff(title="Лайт", price=1500, description="Легкий тариф"),
+        ]
+        session.add_all(tariffs_to_add)
+        await session.flush()
 
-    logging.info("Seeding 'ayurved_m' questionnaire...")
-    ayurved_m_questionnaire = await _create_questionnaire_from_list(
-        session, "ayurved_m", question_definitions_ayurved_m
-    )
-    logging.info("Seeding 'ayurved_j' questionnaire...")
-    ayurved_j_questionnaire = await _create_questionnaire_from_list(
-        session, "ayurved_j", question_definitions_ayurved_j
-    )
+        # Link questionnaires to tariffs
+        from sqlalchemy import insert
+        tariff_questionnaires_table = Base.metadata.tables['tariff_questionnaires']
 
-    # Seed initial tariffs
-    logging.info("Seeding tariffs...")
-    tariffs_to_add = [
-        Tariff(title="Базовый", price=2500, description="Базовый тариф"),
-        Tariff(title="Сопровождение", price=5000, description="Тариф с сопровождением"),
-        Tariff(title="Повторная", price=2000, description="Повторная консультация"),
-        Tariff(title="Лайт", price=1500, description="Легкий тариф"),
-    ]
-    session.add_all(tariffs_to_add)
-    await session.flush()
+        await session.execute(
+            insert(tariff_questionnaires_table),
+            [
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": basic_questionnaire.id},  # Базовый
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_m_questionnaire.id},
+                {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_j_questionnaire.id},
 
-    # Link questionnaires to tariffs
-    from sqlalchemy import insert
-    tariff_questionnaires_table = Base.metadata.tables['tariff_questionnaires']
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": basic_questionnaire.id},  # Сопровождение
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_m_questionnaire.id},
+                {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_j_questionnaire.id},
 
-    await session.execute(
-        insert(tariff_questionnaires_table),
-        [
-            {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": basic_questionnaire.id},  # Базовый
-            {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_m_questionnaire.id},
-            {"tariff_id": tariffs_to_add[0].id, "questionnaire_id": ayurved_j_questionnaire.id},
+                # Повторная - no questionnaires
 
-            {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": basic_questionnaire.id},  # Сопровождение
-            {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_m_questionnaire.id},
-            {"tariff_id": tariffs_to_add[1].id, "questionnaire_id": ayurved_j_questionnaire.id},
-
-            # Повторная - no questionnaires
-
-            {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_m_questionnaire.id},  # Лайт
-            {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_j_questionnaire.id},
-        ],
-    )
-    await session.commit()
-    logging.info("Tariffs and questionnaire links seeded.")
+                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_m_questionnaire.id},  # Лайт
+                {"tariff_id": tariffs_to_add[3].id, "questionnaire_id": ayurved_j_questionnaire.id},
+            ],
+        )
+        await session.commit()
+        logging.info("Tariffs and questionnaire links seeded.")
 
 
 async def on_startup(dispatcher: Dispatcher, bot: Bot):
