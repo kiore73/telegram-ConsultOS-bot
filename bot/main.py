@@ -238,7 +238,7 @@ def main():
         app.router.add_post("/webhook", SimpleRequestHandler(dispatcher, bot, process_update=True))
         app.router.add_post("/yookassa_webhook", yookassa_webhook_handler)
         setup_application(app, dispatcher, bot=bot)
-        web.run_app(app, host="0.0.0.0", port=settings.WEBHOOK_PORT)
+        web.run_app(app, host="0.0.0.0", port=settings.WEB_SERVER_PORT)
     else:
         # Long-polling setup
         async def start_polling():
