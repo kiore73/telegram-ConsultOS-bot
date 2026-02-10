@@ -140,10 +140,10 @@ async def seed_database(session):
     session.add_all(tariffs_to_add)
     await session.flush() # Flush to get IDs for tariffs before linking
 
-    logging.info("Linking tariffs to questionnaires...")
-    tariffs['Базовый'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
-    tariffs['Сопровождение'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
-    tariffs['Лайт'].questionnaires.extend([ayurved_m_questionnaire, ayurved_j_questionnaire])
+    # logging.info("Linking tariffs to questionnaires...")
+    # tariffs['Базовый'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
+    # tariffs['Сопровождение'].questionnaires.extend([basic_questionnaire, ayurved_m_questionnaire, ayurved_j_questionnaire])
+    # tariffs['Лайт'].questionnaires.extend([ayurved_m_questionnaire, ayurved_j_questionnaire])
     
     await session.commit()
     logging.info("Database seeding completed successfully.")
