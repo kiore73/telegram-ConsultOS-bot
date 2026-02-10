@@ -7,7 +7,6 @@ import time
 from urllib.parse import urlparse
 import json
 from functools import partial
-from functools import partial
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -16,6 +15,8 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from yookassa.domain.notification import WebhookNotificationFactory, WebhookNotification
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
