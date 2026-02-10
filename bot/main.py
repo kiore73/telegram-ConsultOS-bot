@@ -170,8 +170,12 @@ async def seed_database(session):
 
 
 async def on_startup(dispatcher: Dispatcher, bot: Bot):
-    await bot.set_webhook(url=settings.WEBHOOK_URL)
-    logging.info("Webhook set up.")
+    if settings.WEBHOOK_HOST and settings.WEBHOOK_HOST.strip():
+        await bot.set_webhook(url=settings.WEBHOOK_URL)
+        logging.info(f"Webhook set up at {settings.WEBHOOK_URL}")
+    else:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logging.info("Webhook deleted, running in long-polling mode.")
 
     # Initialize database engine and create tables
     engine = init_engine()
