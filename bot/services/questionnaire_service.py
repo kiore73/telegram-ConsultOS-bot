@@ -98,7 +98,7 @@ class QuestionnaireService:
             await q_handler.end_current_questionnaire_and_proceed(bot, user_id, message_id, state, session)
             return
         
-        await state.set_state(QuestionnaireState.in_questionnaire)
+        await state.set_state(QuestionnaireFSM.IN_QUESTIONNAIRE)
         await state.update_data(
             pending_questionnaires=pending,
             current_questionnaire_title=next_q_title,
