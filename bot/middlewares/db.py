@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
@@ -17,7 +18,11 @@ class DbSessionMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
+        logging.info("DbSessionMiddleware: Acquiring session...")
         async with self.session_pool() as session:
             data["session"] = session
             data["questionnaire_service"] = questionnaire_service
-            return await handler(event, data)
+            logging.info("DbSessionMiddleware: Session acquired, calling handler.")
+            result = await handler(event, data)
+            logging.info("DbSessionMiddleware: Handler finished.")
+            return result
