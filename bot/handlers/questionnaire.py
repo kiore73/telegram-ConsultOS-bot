@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..states.questionnaire import QuestionnaireFSM
-from ..states.booking import BookingState
+from ..states.booking import BookingFSM
 from ..keyboards.questionnaire import get_question_keyboard
 from ..keyboards.booking import get_calendar_keyboard
 
