@@ -50,7 +50,7 @@ class QuestionnaireService:
             selectinload(Questionnaire.questions).selectinload(Question.logic_rules)
         )
         result = await session.execute(stmt)
-        all_questionnaires = result.scalars().unique().all()
+        all_questionnaires = result.scalars().all()
 
         if not all_questionnaires:
             logging.warning("No questionnaires found in the database.")
