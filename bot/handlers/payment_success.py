@@ -1,19 +1,21 @@
-from aiogram import Bot, Router
+from aiogram import Bot, Router, Dispatcher
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from ..database.models import User
+from ..database.models import User, Payment
 from ..states.booking import BookingFSM
 
 router = Router()
 
-async def on_payment_success(bot: Bot, session: AsyncSession, state: FSMContext, user: User):
+async def on_payment_success(bot: Bot, session: AsyncSession, dispatcher: Dispatcher, payment: Payment):
     """
     Handles the logic after a successful payment.
     Starts the correct questionnaire or booking flow based on the user's tariff.
     """
-    from ..services import questionnaire_service # Lazy import
+    from ..services import questionnaire_service  # Lazy import
     
+    user = payment.user
+    state = FSMContext(storage=dispatcher.storage, key=str(user.telegram_id))
+
     tariff = user.tariff
     if not tariff:
         await bot.send_message(user.telegram_id, "Ошибка: не удалось определить ваш тариф.")
@@ -40,11 +42,11 @@ async def on_payment_success(bot: Bot, session: AsyncSession, state: FSMContext,
     if not pending_questionnaires:
         await bot.send_message(user.telegram_id, "Не найдено подходящих опросников для вашего тарифа.")
         return
-        
+
     await state.update_data(pending_questionnaires=pending_questionnaires)
-    
+
     message = await bot.send_message(user.telegram_id, "Начинаем...")
-    
+
     await questionnaire_service.start_questionnaire(
         bot=bot,
         user_id=user.telegram_id,

@@ -6,6 +6,7 @@ import sys
 import time
 from urllib.parse import urlparse
 import json
+from functools import partial
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -194,6 +195,9 @@ async def on_startup(dispatcher: Dispatcher, bot: Bot):
     register_admin_handlers(dispatcher.router)
 
 
+from functools import partial
+# ... (existing imports)
+
 def main():
     logging.info("Starting bot...")
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -213,21 +217,25 @@ def main():
 
 
     # Webhook handler for YooKassa
-    async def yookassa_webhook_handler(request):
+    async def yookassa_webhook_handler(request, dispatcher: Dispatcher, bot: Bot):
         notification_body = await request.json()
         notification = WebhookNotificationFactory().create(notification_body)
         if notification.event == 'payment.succeeded':
             payment_id = notification.object.id
             async with async_session_maker() as session:
                 async with session.begin():
-                    payment = await session.execute(select(Payment).filter_by(yookassa_id=payment_id))
-                    payment = payment.scalar_one_or_none()
-                    if payment:
+                    # Use joinedload to fetch the user along with the payment
+                    result = await session.execute(
+                        select(Payment).options(joinedload(Payment.user)).filter_by(yookassa_id=payment_id)
+                    )
+                    payment = result.scalar_one_or_none()
+
+                    if payment and payment.user:
                         payment.status = 'succeeded'
                         # Trigger the payment success logic
-                        await payment_success.on_payment_success(payment, bot, session)
+                        await payment_success.on_payment_success(bot, session, dispatcher, payment)
                     else:
-                        logging.warning(f"Payment with yookassa_id {payment_id} not found.")
+                        logging.warning(f"Payment with yookassa_id {payment_id} or its associated user not found.")
             return web.Response(status=200)
         return web.Response(status=400)
 
@@ -239,8 +247,10 @@ def main():
 
     if is_webhook_host_valid:
         app = web.Application()
+        # Use partial to pass dispatcher and bot to the handler
+        handler = partial(yookassa_webhook_handler, dispatcher=dispatcher, bot=bot)
         app.router.add_post("/webhook", SimpleRequestHandler(dispatcher, bot, process_update=True))
-        app.router.add_post("/yookassa_webhook", yookassa_webhook_handler)
+        app.router.add_post("/yookassa_webhook", handler)
         setup_application(app, dispatcher, bot=bot)
         web.run_app(app, host="0.0.0.0", port=settings.WEB_SERVER_PORT)
     else:
