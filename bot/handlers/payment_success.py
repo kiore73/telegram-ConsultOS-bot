@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import User
 from ..states.booking import BookingFSM
-from ..services import questionnaire_service
 
 router = Router()
 
@@ -13,6 +12,8 @@ async def on_payment_success(bot: Bot, session: AsyncSession, state: FSMContext,
     Handles the logic after a successful payment.
     Starts the correct questionnaire or booking flow based on the user's tariff.
     """
+    from ..services import questionnaire_service # Lazy import
+    
     tariff = user.tariff
     if not tariff:
         await bot.send_message(user.telegram_id, "Ошибка: не удалось определить ваш тариф.")
