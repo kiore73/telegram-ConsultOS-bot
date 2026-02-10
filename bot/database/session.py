@@ -12,6 +12,7 @@ def init_engine():
         connect_args={"timeout": 30},
     )
     async_session_maker.configure(bind=async_engine)
+    return async_engine
 
 async def get_async_session():
     """
