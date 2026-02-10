@@ -8,7 +8,7 @@ from aiogram.client.bot import DefaultBotProperties
 from bot.config import settings
 from bot_v2.database import create_db_engine, create_session_maker, Base
 from bot_v2.handlers import start
-from bot_v2.middlewares import DbSessionMiddleware
+from bot_v2.middlewares.middlewares import DbSessionMiddleware
 
 async def main():
     logging.basicConfig(level=logging.INFO)
